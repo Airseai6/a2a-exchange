@@ -38,6 +38,9 @@ const options = {
   'page-size': { type: 'string' },
   'last-event-id': { type: 'string' },
   context: { type: 'string' },
+  room: { type: 'string' },
+  since: { type: 'string' },
+  limit: { type: 'string' },
   'data-dir': { type: 'string' },
   host: { type: 'string' },
   port: { type: 'string' },
@@ -70,6 +73,15 @@ Commands:
   card         Print an agent's Agent Card
   events       Stream an agent's SSE events
   heartbeat    Heartbeat an agent
+  room         Collaboration room (list/create/join/read/send/watch)
+
+Room commands:
+  room list
+  room create --room <id> --name <name>
+  room join --room <id>                     (agent token from state)
+  room read --room <id> [--since <seq>]
+  room send --room <id> --text "..."
+  room watch --room <id> [--timeout 30]     (first new batch or timeout)
 
 Common options:
   --hub <url>            Hub base URL (default ${DEFAULT_HUB})
@@ -115,6 +127,12 @@ function saveState(opts, state) {
     fs.chmodSync(file, 0o600);
   } catch {}
   return file;
+}
+
+function saveRoomSeen(opts, roomId, seq) {
+  const state = loadState(opts) ?? {};
+  state.roomSeen = { ...(state.roomSeen ?? {}), [roomId]: Number(seq) || 0 };
+  saveState(opts, state);
 }
 
 function clientFor(opts, { needAgent = false } = {}) {
@@ -399,6 +417,54 @@ export async function main(argv = process.argv.slice(2)) {
         await client.streamAgentEvents(agentId, (event) => {
           process.stdout.write(JSON.stringify(event) + '\n');
         }, { lastEventId });
+        break;
+      }
+      case 'room': {
+        const sub = positionals[1] ?? 'list';
+        const roomId = opts.room || positionals[2] || 'lobby';
+        if (sub === 'list') {
+          const { client } = clientFor(opts);
+          print(await client.listRooms());
+          break;
+        }
+        if (sub === 'create') {
+          const { client } = clientFor(opts);
+          print(await client.createRoom({ roomId, name: opts.name, description: opts.text }));
+          break;
+        }
+        const { client, state } = clientFor(opts, { needAgent: true });
+        const agentId = opts.agent || state.agentId;
+        if (sub === 'join') {
+          print(await client.joinRoom(roomId, agentId));
+        } else if (sub === 'send') {
+          print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId));
+        } else if (sub === 'read') {
+          const since = opts.since !== undefined ? Number(opts.since) : (state.roomSeen?.[roomId] ?? 0);
+          const data = await client.readRoom(roomId, since);
+          saveRoomSeen(opts, roomId, data.lastSeq);
+          print(data);
+        } else if (sub === 'watch') {
+          const timeoutMs = Number(opts.timeout ?? 30) * 1000;
+          const deadline = Date.now() + timeoutMs;
+          let since = opts.since !== undefined ? Number(opts.since) : (state.roomSeen?.[roomId] ?? 0);
+          let found = null;
+          while (Date.now() < deadline) {
+            const data = await client.readRoom(roomId, since);
+            if (data.messages?.length) {
+              found = data;
+              break;
+            }
+            await sleep(750);
+          }
+          if (found) {
+            saveRoomSeen(opts, roomId, found.lastSeq);
+            print(found);
+          } else {
+            print({ roomId, messages: [], timeout: true });
+          }
+        } else {
+          throw new Error(`Unknown room subcommand: ${sub}`);
+        }
         break;
       }
       case 'version': {

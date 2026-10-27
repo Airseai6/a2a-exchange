@@ -11,7 +11,7 @@ export class ExchangeStore {
     this.dataDir = path.resolve(dataDir);
     this.stateFile = path.join(this.dataDir, 'state.json');
     this.eventsFile = path.join(this.dataDir, 'events.jsonl');
-    this.state = { version: STATE_VERSION, nextEventId: 1, agents: {}, tasks: {} };
+    this.state = { version: STATE_VERSION, nextEventId: 1, agents: {}, tasks: {}, rooms: {} };
     this.events = [];
     this.agentSubs = new Map();
     this.taskSubs = new Map();
@@ -26,6 +26,7 @@ export class ExchangeStore {
         nextEventId: Number(state.nextEventId) || 1,
         agents: state.agents && typeof state.agents === 'object' ? state.agents : {},
         tasks: state.tasks && typeof state.tasks === 'object' ? state.tasks : {},
+        rooms: state.rooms && typeof state.rooms === 'object' ? state.rooms : {},
       };
     }
     this.events = [];
@@ -88,6 +89,27 @@ export class ExchangeStore {
 
   listTasks() {
     return Object.values(this.state.tasks);
+  }
+
+  /* ── rooms ── */
+  putRoom(room) {
+    room.updatedAt = nowIso();
+    this.state.rooms[room.id] = room;
+    this.saveState();
+    return room;
+  }
+
+  getRoom(roomId) {
+    return this.state.rooms[roomId];
+  }
+
+  listRooms() {
+    return Object.values(this.state.rooms);
+  }
+
+  deleteRoom(roomId) {
+    delete this.state.rooms[roomId];
+    this.saveState();
   }
 
   /* ── events ── */
@@ -181,6 +203,7 @@ export class ExchangeStore {
     return {
       agents: Object.keys(this.state.agents).length,
       tasks: Object.keys(this.state.tasks).length,
+      rooms: Object.keys(this.state.rooms).length,
       events: this.state.nextEventId - 1,
     };
   }

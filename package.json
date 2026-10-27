@@ -1,33 +1,33 @@
-{
-  "name": "a2a-exchange",
-  "version": "0.1.0",
-  "description": "Local-first A2A Exchange: registry + hub + skill that lets DeepSeek Harness sessions (and any A2A agent) register, discover, and exchange tasks with durable inboxes and wake-up hooks.",
-  "type": "module",
-  "license": "Apache-2.0",
-  "engines": {
-    "node": ">=22"
-  },
-  "bin": {
-    "a2a-exchange": "./bin/a2a-exchange.mjs"
-  },
-  "exports": {
-    ".": "./src/index.mjs",
-    "./sdk": "./sdk/client.mjs"
-  },
-  "scripts": {
-    "start": "node bin/a2a-exchange.mjs serve",
-    "test": "node --test test/a2a.test.mjs test/e2e.test.mjs test/registry.test.mjs test/stream.test.mjs",
-    "demo": "node examples/two-agents.mjs"
-  },
-  "keywords": [
-    "a2a",
-    "agent-to-agent",
-    "deepseek-harness",
-    "dsh",
-    "multi-agent",
-    "agent-exchange"
-  ],
-  "dsh": {
-    "skill": "skill/a2a-exchange"
-  }
+﻿{
+    "name":  "a2a-exchange",
+    "version":  "0.2.0",
+    "description":  "Local-first A2A Exchange: start a local hub/room, register agents, and let conversations collaborate over A2A-compatible messages.",
+    "type":  "module",
+    "license":  "Apache-2.0",
+    "engines":  {
+                    "node":  "\u003e=22"
+                },
+    "bin":  {
+                "a2a-exchange":  "./bin/a2a-exchange.mjs"
+            },
+    "exports":  {
+                    ".":  "./src/index.mjs",
+                    "./sdk":  "./sdk/client.mjs"
+                },
+    "scripts":  {
+                    "start":  "node bin/a2a-exchange.mjs serve",
+                    "test":  "node --test test/a2a.test.mjs test/e2e.test.mjs test/registry.test.mjs test/rooms.test.mjs test/stream.test.mjs",
+                    "demo":  "node examples/two-agents.mjs"
+                },
+    "keywords":  [
+                     "a2a",
+                     "agent-to-agent",
+                     "deepseek-harness",
+                     "dsh",
+                     "multi-agent",
+                     "agent-exchange"
+                 ],
+    "dsh":  {
+                "skill":  "skill/a2a-exchange"
+            }
 }

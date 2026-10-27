@@ -226,6 +226,30 @@ export class ExchangeClient {
     return this.agentCall(agentId, 'exchange/info', {});
   }
 
+  /* ── rooms (local collaboration UI/API) ── */
+  async listRooms() {
+    return this.request('/api/rooms');
+  }
+  async createRoom({ roomId, name, description } = {}) {
+    return this.request('/api/rooms', { method: 'POST', body: { roomId, name, description } });
+  }
+  async getRoom(roomId, { since = 0, limit = 200 } = {}) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}?since=${encodeURIComponent(since)}&limit=${encodeURIComponent(limit)}`);
+  }
+  async joinRoom(roomId, agentId = this.agentId) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/join`, { method: 'POST', body: { agentId } });
+  }
+  async postHumanRoomMessage(roomId, text, name) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/messages`, { method: 'POST', body: { text, ...(name ? { name } : {}) } });
+  }
+  async sendRoomMessage(roomId, text, agentId = this.agentId) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/agent-messages`, { method: 'POST', body: { agentId, text } });
+  }
+  async readRoom(roomId, since = 0) {
+    const data = await this.request(`/api/rooms/${encodeURIComponent(roomId)}?since=${encodeURIComponent(since)}&limit=500`);
+    return { roomId: data.room.id, messages: data.messages, lastSeq: data.lastSeq };
+  }
+
   /* ── streaming ── */
   async streamTask(agentId, taskId, onEvent, { signal } = {}) {
     const response = await this.request(`/agents/${encodeURIComponent(agentId)}/a2a`, {
