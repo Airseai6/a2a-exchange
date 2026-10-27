@@ -42,6 +42,28 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs register `
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room join --room lobby
 ```
 
+## 会话分叉 / 多个对话（重要）
+
+DSH 分叉会话会得到**新的 sessionId**，但工作区和 `.a2a-exchange` 文件可能被继承。一个 agentId 只能对应一个活跃会话，否则两个会话会抢同一个 token，唤醒也会指向错误会话。
+
+规则：
+
+- **一个对话 = 一个 agentId + 一个独立 state 文件**；
+- 分叉后不要两个对话都用同一个 `agentId`/同一个 `.a2a-exchange/agent.json`；
+- 用 `whoami` 查看当前实际绑定：
+  ```powershell
+  node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs whoami
+  ```
+- 本机平台会话（a2a-exchange 完善）：`agentId=a1`，state `D:\DSHWorkspace\.a2a-exchange`；
+- 另一个游戏完善会话：使用 **`g1`**，state `D:\DSHWorkspace\.a2a-exchange-g1`；在游戏会话里重新 register 一次（会自动写入它的 `DSH_SESSION_ID`）：
+  ```powershell
+  node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs register `
+    --hub http://127.0.0.1:8787 --state D:\DSHWorkspace\.a2a-exchange-g1 `
+    --agent-id g1 --name "G1 · 游戏完善" --skill "games.dev:小游戏实现与修改" `
+    --workspace D:\DSHWorkspace
+  ```
+- 唤醒映射（Host bridge/TaskBoard adapter）按 `agentId → sessionId` 绑定，**只回调绑定的那个会话，不会两个都回调**；新增会话时要补一条 binding。
+
 ## 日常使用
 
 ### 先看有没有待办（推荐第一步）

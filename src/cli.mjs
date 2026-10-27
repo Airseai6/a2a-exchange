@@ -85,7 +85,8 @@ Commands:
   card         Print an agent's Agent Card
   events       Stream an agent's SSE events
   heartbeat    Heartbeat an agent
-  room         Collaboration room (list/create/join/read/send/watch)
+  whoami       Print this conversation's agentId / DSH sessionId / state file
+  room         Collaboration room (list/create/join/read/send/watch/tasks)
 
 Room commands:
   room list
@@ -299,6 +300,7 @@ export async function main(argv = process.argv.slice(2)) {
       }
       case 'register': {
         const { client, state } = clientFor(opts);
+        const sessionId = opts.session || process.env.DSH_SESSION_ID;
         const skills = (opts.skill ?? []).map((s) => s);
         if (skills.length === 0) {
           throw new Error('At least one --skill <id:description> is required');
@@ -320,7 +322,7 @@ export async function main(argv = process.argv.slice(2)) {
           version: opts.version ?? '0.1.0',
           skills: skillObjects,
           workspace: opts.workspace ?? process.cwd(),
-          sessionId: opts.session,
+          sessionId,
           wakePolicy: opts['wake-policy'] ?? 'none',
         });
         const file = saveState(opts, {
@@ -328,10 +330,11 @@ export async function main(argv = process.argv.slice(2)) {
           serverToken: client.serverToken,
           agentId: result.agentId,
           token: result.token,
+          sessionId,
           card: result.card,
           registeredAt: nowIso(),
         });
-        print({ ...result, cardUrl: `${client.baseUrl}/agents/${result.agentId}/.well-known/agent-card.json`, stateFile: file });
+        print({ ...result, sessionId, cardUrl: `${client.baseUrl}/agents/${result.agentId}/.well-known/agent-card.json`, stateFile: file });
         process.stderr.write('\nNOTE: the agent token above is shown once. It is stored in the state file (0600).\n');
         break;
       }
@@ -573,6 +576,18 @@ export async function main(argv = process.argv.slice(2)) {
       }
       case 'version': {
         print({ name: 'a2a-exchange', protocolVersion: PROTOCOL_VERSION });
+        break;
+      }
+      case 'whoami': {
+        const state = loadState(opts) ?? {};
+        print({
+          agentId: state.agentId ?? null,
+          sessionId: state.sessionId ?? null,
+          dshSessionId: process.env.DSH_SESSION_ID ?? null,
+          hub: state.hub ?? opts.hub ?? DEFAULT_HUB,
+          stateFile: stateFile(opts),
+          hasToken: Boolean(state.token),
+        });
         break;
       }
       default:
