@@ -1,0 +1,23 @@
+{
+  "name": "@local/a2a-room-bridge3",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A2A Exchange room bridge: wakes mapped DSH sessions when a room message mentions them.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

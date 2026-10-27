@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "A2A 房间唤醒桥",
+    "description": "当 A2A Exchange 房间消息 @ 到某个 DSH 会话时，自动把摘要注入该会话。"
+  }
+}

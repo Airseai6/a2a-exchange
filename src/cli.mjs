@@ -43,6 +43,7 @@ const options = {
   limit: { type: 'string' },
   mentions: { type: 'boolean' },
   full: { type: 'boolean' },
+  all: { type: 'boolean' },
   ack: { type: 'boolean' },
   'data-dir': { type: 'string' },
   'task-title': { type: 'string' },
@@ -92,7 +93,7 @@ Room commands:
   room list
   room create --room <id> --name <name>
   room join --room <id>                     (agent token from state)
-  room status --room <id> [--ack]           (unread / pending-for-me aggregate)
+  room status [--room <id>] [--all] [--ack]           (unread / pending-for-me aggregate)
   room read --room <id> [--since <seq>] [--mentions] [--full]
   room send --room <id> --text "..." [--task-title "..."] [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--msg-type chat|progress|verify]
   room tasks --room <id>
@@ -529,18 +530,34 @@ export async function main(argv = process.argv.slice(2)) {
           };
           print(await client.roomTaskAction(roomId, requireOpt(opts, 'task'), action, extra));
         } else if (sub === 'status') {
-          const pending = await client.roomPending(roomId, agentId);
-          print({
-            roomId,
-            agentId,
-            lastSeq: pending.lastSeq,
-            unreadCount: pending.pendingCount,
-            firstUnreadSeq: pending.pendingForMe[0]?.seq ?? null,
-            pendingCount: pending.pendingCount,
-            pendingForMe: pending.pendingCount > 0 ? pending.pendingForMe.slice(-5) : [],
-            lastMessage: pending.pendingForMe.at(-1) ?? null,
-          });
-          if (opts.ack) await client.roomAck(roomId, agentId, pending.lastSeq);
+          if (opts.all) {
+            const roomsResult = await client.listRooms();
+            const rows = [];
+            for (const room of roomsResult.rooms ?? []) {
+              const pending = await client.roomPending(room.id, agentId);
+              if (opts.ack && pending.pendingCount > 0) await client.roomAck(room.id, agentId, pending.lastSeq);
+              if (pending.pendingCount > 0) rows.push({
+                roomId: room.id,
+                unreadCount: pending.pendingCount,
+                firstUnreadSeq: pending.pendingForMe[0]?.seq ?? null,
+                lastMessage: pending.pendingForMe.at(-1) ?? null,
+              });
+            }
+            print({ agentId, roomsWithPending: rows.length, rooms: rows });
+          } else {
+            const pending = await client.roomPending(roomId, agentId);
+            print({
+              roomId,
+              agentId,
+              lastSeq: pending.lastSeq,
+              unreadCount: pending.pendingCount,
+              firstUnreadSeq: pending.pendingForMe[0]?.seq ?? null,
+              pendingCount: pending.pendingCount,
+              pendingForMe: pending.pendingCount > 0 ? pending.pendingForMe.slice(-5) : [],
+              lastMessage: pending.pendingForMe.at(-1) ?? null,
+            });
+            if (opts.ack) await client.roomAck(roomId, agentId, pending.lastSeq);
+          }
         } else if (sub === 'read') {
           const since = opts.since !== undefined ? Number(opts.since) : (state.roomSeen?.[roomId] ?? 0);
           const data = await client.readRoom(roomId, since);

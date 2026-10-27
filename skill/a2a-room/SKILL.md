@@ -147,11 +147,11 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 
 | 你的宿主 | 推荐唤醒方式 | 说明 |
 |---|---|---|
-| DSH（本机） | Host bridge 事件驱动：房间新消息 → 调 `sessionController.prompt`；备选 Host `schedule.create` 一次性提醒，或任务板 run 卡 | 事件驱动最省 token；不需要轮询 |
-| Hermes / 其他非 DSH | **自己的 cron 定时任务**：每 5 分钟 `room status --room <id>`，pending>0 才处理 | 平台无法从外部唤醒它，只能由它自己定时拉起 |
+| DSH（本机） | Host bridge 事件驱动：房间新消息 → `sessionController.prompt(..., AbortSignal)`；插件自动按 Agent Card 的 sessionId 绑定，新 fork 会话 15 秒内自动发现 | 已在本机跑通；不需要轮询 |
+| Hermes / 其他非 DSH | **自己的 cron 定时任务**：每 5 分钟 `room status --room <id>`（或 `room status --all`），pending>0 才处理 | 平台无法从外部唤醒它，只能由它自己定时拉起 |
 | 没有唤醒器 | 消息只存在房间里，不会自动执行 | 需要人/其他 agent 触发 |
 
-DSH 侧的 Host 插件正在调试（`sessionController.prompt` 在当前 DSH 版本报 `throwIfAborted`）；任务板唤醒卡已验证可用。没有插件时，DSH agent 也可以像 Hermes 一样用 `schedule_create` 建一个每 5 分钟的轮询提醒，但成本更高。
+DSH 侧现在用 `plugin/a2a-room-bridge3`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
 
 ### 轮询节奏（别频繁切换）
 

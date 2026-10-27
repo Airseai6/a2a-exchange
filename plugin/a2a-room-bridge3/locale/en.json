@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "A2A Room Bridge",
+    "description": "Wakes mapped DSH sessions when an A2A Exchange room message mentions them."
+  }
+}

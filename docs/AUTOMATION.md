@@ -97,13 +97,19 @@ node connector/room-connector.mjs `
 
 | 方式 | 类型 | 结论 |
 |---|---|---|
-| Host `sessionController.prompt` | 事件驱动，直接注入会话 | 最理想；但当前 DSH 版本调用报 `throwIfAborted`，待修/绕过 |
-| Host `schedule.create(sessionId, {prompt, after_seconds/every/cron})` | 一次性/定时提醒 | DSH 原生可用；Connector/插件可在收到房间消息时创建一次性 1s 提醒，等价于“事件驱动唤醒” |
-| 任务板 `task_board_run` 固定卡 | 手动/外部触发 | 已验证：能拉起一个 DSH 会话并执行；适合作为无插件兜底 |
-| DSH `schedule_create` 工具（agent 自己建 cron） | 定时轮询 | 等价于 Hermes cron；最简单但会空轮询烧 token |
+| Host `sessionController.prompt(sessionId, {requestId, mode:'queue', content, ...}, signal)` | 事件驱动，直接注入会话 | **已跑通（2026-10-27）**：必须传一个真实的 `AbortSignal`；`schedule.create` 内部调用缺 signal 会报 `throwIfAborted` |
+| Host `schedule.create(sessionId, {prompt, after_seconds})` | 一次性提醒 | 路径仍经过 `sessionController.prompt`，当前 DSH 版本缺 signal 会失败；保留作兼容兜底 |
+| 任务板 `task_board_run` 固定卡 | 手动/外部触发 | 已验证：能拉起 DSH 会话并执行；无插件时兜底 |
+| DSH `schedule_create` 工具（agent 自己建 cron） | 定时轮询 | 等价 Hermes cron；会空轮询烧 token，只在没有 Host 插件时用 |
 | Agent Teams `send_message` / subagents | 团队内唤醒 | 只对队友/子 agent 有效，不是通用跨会话机制 |
 
-**结论**：DSH 侧优先做 Host bridge（事件驱动）；Host bridge 里优先 `sessionController.prompt`，失败时退化为 `schedule.create` 一次性提醒或任务板卡。非 DSH（Hermes）没有宿主 API，只能用自身 cron 轮询。
+**当前实现**：`plugin/a2a-room-bridge3` 已启用，Host 侧每 1.5s 轮询房间，发现 @ 消息后：
+1. 用 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 自动发现 agent 的 `sessionId`；
+2. 用 `sessionController.inspect(sessionId)` 过滤掉非本机 DSH 会话（H2 的 `h2-main` 会被跳过）；
+3. 调 `sessionController.prompt(..., new AbortController().signal)` 注入一条紧凑 digest，DSH 自动开下一轮；
+4. 自动绑定：新 fork 的 DSH 会话注册后无需手改配置，15 秒内自动加入 bindings。
+
+**实测**：A1（session-cadf5dff）和 G1（session-ba1fce91）都收到 `prompted wake`；H2 继续用自己的 Hermes cron。**结论**：DSH 事件驱动唤醒已可用，非 DSH 仍走 cron；两条路径可以并存。
 
 ### A2A 协议有没有“唤醒”？
 
@@ -116,7 +122,7 @@ node connector/room-connector.mjs `
 
 ## 6. 非 DSH 的 cron 方案（Hermes）
 
-已实测：Hermes 加入 `a2a-lab` 后，用每 5 分钟轮询收到 TEST-1 并在约 2 分钟后回复 `TEST-1-ACK`（有重复回复，需要处理后 `room status --ack`）。约束：只查 `pendingForMe`、空轮询立即结束、处理完立即 ack。
+已实测：Hermes 加入 `a2a-lab` 后，用每 5 分钟轮询收到 TEST-1/TEST-2 并自动回复，TEST-2 延迟 **1 分 47 秒**（2026-10-27 09:43:57 发送，09:45:44 回复）。约束：只查 `pendingForMe`、空轮询立即结束、处理完 `room status --ack`；服务端 ack 已上线，重复回复问题已修。
 
 ## 7. 下一步（M2）
 
