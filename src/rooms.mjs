@@ -72,6 +72,7 @@ export class RoomService {
     return {
       room: this.summary(room),
       participants: this.participants(room),
+      tasks: this.listTasks(roomId),
       messages,
       lastSeq: room.nextSeq - 1,
     };
@@ -148,7 +149,7 @@ export class RoomService {
     const room = this.#requireRoom(roomId);
     const text = this.#cleanText(pick(params, 'text'));
     const name = String(pick(params, 'name') ?? '我（人类）').slice(0, 64);
-    return this.#post(room, { kind: 'human', name }, text, this.#cleanTask(pick(params, 'task')));
+    return this.#post(room, { kind: 'human', name }, text, pick(params, 'type') ?? 'chat', pick(params, 'taskId', 'task_id'));
   }
 
   postAgent(roomId, agentId, params = {}) {
@@ -157,7 +158,8 @@ export class RoomService {
     agent.lastSeen = new Date().toISOString();
     this.store.putAgent(agent);
     const text = this.#cleanText(pick(params, 'text'));
-    const task = this.#cleanTask(pick(params, 'task'));
+    const type = pick(params, 'type') ?? 'chat';
+    const taskId = pick(params, 'taskId', 'task_id');
     if (!room.participants[agentId]) {
       room.participants[agentId] = {
         agentId,
@@ -169,9 +171,74 @@ export class RoomService {
     } else {
       room.participants[agentId].lastSeen = nowIso();
     }
-    const message = this.#post(room, { kind: 'agent', agentId, name: agent.card?.name ?? agentId }, text, task);
+    const message = this.#post(room, { kind: 'agent', agentId, name: agent.card?.name ?? agentId }, text, type, taskId);
     this.#publish(roomId, { type: 'participants', roomId, participants: this.participants(room) });
     return message;
+  }
+
+  /* ── room task board ── */
+  listTasks(roomId) {
+    this.#requireRoom(roomId);
+    return this.store.listRoomTasks(roomId).map((task) => ({ ...task, events: this.store.listRoomTaskEvents(task.taskId) }));
+  }
+
+  createTask(roomId, params = {}, actor = 'human') {
+    this.#requireRoom(roomId);
+    const title = String(pick(params, 'title') ?? '').trim();
+    if (!title) throw new RpcError(-32602, 'task.title is required', { a2aCode: 'INVALID_ARGUMENT' });
+    const task = {
+      taskId: uuid(),
+      roomId,
+      title: title.slice(0, 200),
+      detail: String(pick(params, 'detail') ?? '').slice(0, 4000),
+      acceptance: String(pick(params, 'acceptance') ?? '').slice(0, 2000),
+      status: 'open',
+      assignee: pick(params, 'assignee') ? String(pick(params, 'assignee')) : null,
+      createdBy: actor,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+      verifiedBy: null,
+      verifiedAt: null,
+    };
+    this.store.putRoomTask(task);
+    this.store.appendRoomTaskEvent({ taskId: task.taskId, type: 'created', actor, note: title });
+    this.#publish(roomId, { type: 'tasks', roomId, tasks: this.listTasks(roomId) });
+    return { ...task, events: this.store.listRoomTaskEvents(task.taskId) };
+  }
+
+  taskAction(roomId, taskId, action, params = {}, actor = 'human') {
+    this.#requireRoom(roomId);
+    const task = this.store.getRoomTask(taskId);
+    if (!task || task.roomId !== roomId) throw new RpcError(-32004, 'Task not found', { a2aCode: 'TASK_NOT_FOUND' });
+    const now = nowIso();
+    const note = String(pick(params, 'note') ?? '').slice(0, 2000);
+    if (action === 'claim') {
+      task.status = 'in_progress';
+      task.assignee = pick(params, 'assignee') ? String(pick(params, 'assignee')) : (task.assignee ?? null);
+    } else if (action === 'resolve') {
+      task.status = 'resolved';
+    } else if (action === 'verify') {
+      if (pick(params, 'pass') === false) {
+        task.status = 'in_progress';
+        task.verifiedBy = null;
+        task.verifiedAt = null;
+      } else {
+        task.status = 'verified';
+        task.verifiedBy = String(actor);
+        task.verifiedAt = now;
+      }
+    } else if (action === 'reopen') {
+      task.status = 'open';
+    } else if (action === 'close') {
+      task.status = 'closed';
+    } else {
+      throw new RpcError(-32602, `Unknown task action: ${action}`, { a2aCode: 'INVALID_ARGUMENT' });
+    }
+    task.updatedAt = now;
+    this.store.putRoomTask(task);
+    this.store.appendRoomTaskEvent({ taskId, type: action, actor, note });
+    this.#publish(roomId, { type: 'tasks', roomId, tasks: this.listTasks(roomId) });
+    return { ...task, events: this.store.listRoomTaskEvents(task.taskId) };
   }
 
   read(roomId, params = {}) {
@@ -229,15 +296,16 @@ export class RoomService {
     return () => this.subs.get(roomId)?.delete(fn);
   }
 
-  #post(room, sender, text, task = undefined) {
+  #post(room, sender, text, type = 'chat', taskId = undefined) {
     const message = {
       messageId: uuid(),
       roomId: room.id,
       seq: room.nextSeq++,
       sender,
       text,
+      ...(type && type !== 'chat' ? { type } : {}),
+      ...(taskId ? { taskId } : {}),
       parts: [{ text, mediaType: 'text/plain' }],
-      ...(task ? { task } : {}),
       time: nowIso(),
     };
     room.messages.push(message);

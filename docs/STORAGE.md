@@ -14,9 +14,14 @@
 ### A2A Exchange 房间
 
 - 数据目录：`D:\DSHWorkspace\a2a-exchange\.data\`
-- **当前主存储：SQLite WAL**（2026-10-27 从 JSON 迁移）
-  - `a2a-exchange.db`：`agents` / `tasks` / `rooms` / `messages` / `events` / `meta`
-  - `messages(room_id, seq)` 主键保证顺序；JSON 字段保留 A2A 消息结构
+- **当前主存储：SQLite WAL**（2026-10-27 从 JSON 迁移，随后升级为规范化房间表）
+  - `agents` / `tasks` / `events`：JSON 文档列（A2A 域）
+  - `rooms`：房间元数据
+  - `room_members`：成员与角色
+  - `room_acks`：每人已读/ack 游标
+  - `room_messages(room_id, seq)`：聊天消息（类型、可选 task_id）
+  - `room_tasks`：任务板（标题/详情/验收/状态/负责人/验证人）
+  - `room_task_events`：任务事件时间线（created/claim/resolve/verify…）
   - `state.json` / `events.jsonl` 保留为迁移前备份（新写入不再使用）
 - M1 的 JSON 实现仍保留在 `src/store.mjs`，可用 `--store json` 回退。
 

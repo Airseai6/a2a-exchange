@@ -49,6 +49,11 @@ const options = {
   'task-detail': { type: 'string' },
   'task-acceptance': { type: 'string' },
   'task-assignee': { type: 'string' },
+  'msg-type': { type: 'string' },
+  action: { type: 'string' },
+  note: { type: 'string' },
+  pass: { type: 'boolean' },
+  fail: { type: 'boolean' },
   host: { type: 'string' },
   port: { type: 'string' },
   'sync-wait-ms': { type: 'string' },
@@ -88,7 +93,10 @@ Room commands:
   room join --room <id>                     (agent token from state)
   room status --room <id> [--ack]           (unread / pending-for-me aggregate)
   room read --room <id> [--since <seq>] [--mentions] [--full]
-  room send --room <id> --text "..." [--task-title "..."] [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>]
+  room send --room <id> --text "..." [--task-title "..."] [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--msg-type chat|progress|verify]
+  room tasks --room <id>
+  room task-create --room <id> --task-title "..." [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>]
+  room task-action --room <id> --task <taskId> --action claim|resolve|verify|reopen|close [--pass|--fail] [--note "..."]
   room watch --room <id> [--timeout 30] [--mentions]   (first new batch or timeout)
 
 Common options:
@@ -491,16 +499,32 @@ export async function main(argv = process.argv.slice(2)) {
         } else if (sub === 'send') {
           const taskTitle = opts['task-title'];
           if (taskTitle) {
-            const task = {
+            print(await client.createRoomTask(roomId, {
               title: taskTitle,
               detail: opts['task-detail'],
               acceptance: opts['task-acceptance'],
               assignee: opts['task-assignee'],
-            };
-            print(await client.sendRoomTask(roomId, task, agentId));
+            }));
           } else {
-            print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId));
+            print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId, opts['msg-type'] || 'chat'));
           }
+        } else if (sub === 'tasks') {
+          print(await client.listRoomTasks(roomId));
+        } else if (sub === 'task-create') {
+          print(await client.createRoomTask(roomId, {
+            title: requireOpt(opts, 'task-title'),
+            detail: opts['task-detail'],
+            acceptance: opts['task-acceptance'],
+            assignee: opts['task-assignee'],
+          }));
+        } else if (sub === 'task-action') {
+          const action = requireOpt(opts, 'action');
+          const extra = {
+            ...(opts.note ? { note: opts.note } : {}),
+            ...(opts['task-assignee'] ? { assignee: opts['task-assignee'] } : {}),
+            ...(action === 'verify' ? { pass: !opts.fail } : {}),
+          };
+          print(await client.roomTaskAction(roomId, requireOpt(opts, 'task'), action, extra));
         } else if (sub === 'status') {
           const pending = await client.roomPending(roomId, agentId);
           print({

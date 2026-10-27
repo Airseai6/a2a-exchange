@@ -326,6 +326,8 @@ export function createExchangeServer(options = {}) {
         const unsubscribe = rooms.subscribe(roomId, (event) => {
           if (event.type === 'message') {
             sseWrite(res, { id: event.message.seq, event: 'message', data: event });
+          } else if (event.type === 'tasks') {
+            sseWrite(res, { event: 'tasks', data: event });
           } else {
             sseWrite(res, { event: 'participants', data: event });
           }
@@ -353,6 +355,30 @@ export function createExchangeServer(options = {}) {
         const agentId = String(pick(body, 'agentId', 'agent_id') ?? '');
         if (!agentId) throw new HttpError(400, 'agentId is required');
         return sendJson(res, 200, rooms.ack(roomId, agentId, pick(body, 'seq', 'lastSeq', 'last_seq')));
+      }
+      const roomTasksMatch = /^\/api\/rooms\/([^/]+)\/tasks$/.exec(path);
+      if (roomTasksMatch && req.method === 'GET') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        return sendJson(res, 200, { tasks: rooms.listTasks(decodeURIComponent(roomTasksMatch[1])) });
+      }
+      if (roomTasksMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const body = await readJsonBody(req);
+        return sendJson(res, 201, { task: rooms.createTask(decodeURIComponent(roomTasksMatch[1]), body, 'human') });
+      }
+      const roomTaskActionMatch = /^\/api\/rooms\/([^/]+)\/tasks\/([^/]+)\/([^/]+)$/.exec(path);
+      if (roomTaskActionMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const body = await readJsonBody(req);
+        return sendJson(res, 200, {
+          task: rooms.taskAction(
+            decodeURIComponent(roomTaskActionMatch[1]),
+            decodeURIComponent(roomTaskActionMatch[2]),
+            decodeURIComponent(roomTaskActionMatch[3]),
+            body,
+            'human',
+          ),
+        });
       }
       const roomGetMatch = /^\/api\/rooms\/([^/]+)$/.exec(path);
       if (roomGetMatch && req.method === 'GET') {
@@ -605,6 +631,31 @@ function dashboardHtml() {
   .task-tag { font-size:10px; font-weight:500; color:#9fc0ff; border:1px solid #3b527a; background:#152238; border-radius:999px; padding:1px 7px; }
   .task-kv { font-size:12px; color:var(--muted); margin-top:6px; white-space:pre-wrap; }
   .task-kv b { color:var(--text); font-weight:500; }
+  .tabs { display:flex; gap:6px; margin-bottom:10px; border-bottom:1px solid var(--line); }
+  .tab { flex:1; background:transparent; color:var(--muted); border:0; padding:7px 0; font-size:12px; cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.active { color:var(--text); border-bottom-color:var(--accent); }
+  .hidden { display:none !important; }
+  .task-toolbar { display:flex; align-items:center; justify-content:space-between; margin:4px 0 8px; }
+  .task-toolbar .label { margin:0; }
+  .task-toolbar button.small, #taskCreate { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:7px; padding:4px 8px; font-size:11px; cursor:pointer; }
+  #taskCreate.primary { background:var(--accent); border-color:var(--accent); color:#fff; width:100%; margin-top:6px; }
+  .task-form { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px; margin-bottom:10px; display:flex; flex-direction:column; gap:6px; }
+  .task-form input, .task-form textarea { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:7px; padding:7px 8px; font-family:inherit; font-size:12px; width:100%; }
+  .task-form textarea { height:56px; resize:vertical; }
+  .board-task { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px; }
+  .board-task .bt-title { font-size:13px; font-weight:600; line-height:1.35; }
+  .board-task .bt-meta { font-size:11px; color:var(--muted); margin-top:4px; }
+  .board-task .bt-accept { font-size:11px; color:#9fc0ff; margin-top:4px; }
+  .board-task .bt-actions { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .board-task .bt-actions button { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:3px 8px; font-size:11px; cursor:pointer; }
+  .board-task .bt-actions button:hover { border-color:var(--accent); }
+  .badge { display:inline-block; font-size:10px; border-radius:999px; padding:1px 7px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
+  .badge.open { color:#e0b64a; border-color:#5a4a20; background:#241f10; }
+  .badge.in_progress { color:#7fb2ff; border-color:#2d4266; background:#121c2c; }
+  .badge.resolved { color:#c79bff; border-color:#453260; background:#1d1529; }
+  .badge.verified { color:#7ee2a8; border-color:#245c3a; background:#0f2418; }
+  .msg-type { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:0 8px; height:52px; font-size:12px; }
+  .type-badge { display:inline-block; font-size:10px; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:0 6px; margin-left:6px; }
   .composer { border-top:1px solid var(--line); padding:12px 20px; display:flex; gap:10px; align-items:flex-end; }
   textarea { flex:1; resize:none; height:52px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-family:inherit; font-size:14px; outline:none; }
   textarea:focus { border-color:var(--accent); }
@@ -639,15 +690,37 @@ function dashboardHtml() {
     <div id="messages"></div>
     <div class="error" id="error"></div>
     <div class="composer">
+      <select id="msgType" class="msg-type" title="消息类型">
+        <option value="chat">对话</option>
+        <option value="progress">进展</option>
+        <option value="verify">验证</option>
+      </select>
       <textarea id="input" placeholder="输入消息，Enter 发送（Shift+Enter 换行）"></textarea>
       <button class="send" id="send">发送</button>
     </div>
   </main>
   <aside class="right">
-    <div class="label">已注册 agent</div>
-    <div id="agents"></div>
-    <div class="label" style="margin-top:18px">房间成员</div>
-    <div id="members"></div>
+    <div class="tabs">
+      <button id="tabTasks" class="tab active">任务</button>
+      <button id="tabMembers" class="tab">成员</button>
+    </div>
+    <div id="tasksPanel">
+      <div class="task-toolbar"><span id="taskCounts" class="label">任务板</span><button id="newTask" class="small">＋ 新任务</button></div>
+      <div class="task-form hidden" id="taskForm">
+        <input id="taskTitle" placeholder="任务标题" />
+        <textarea id="taskDetail" placeholder="详情（可选）"></textarea>
+        <input id="taskAcceptance" placeholder="验收标准（可选）" />
+        <input id="taskAssignee" placeholder="负责人 agentId（可选）" />
+        <button id="taskCreate" class="small primary">创建任务</button>
+      </div>
+      <div id="tasks"></div>
+    </div>
+    <div id="membersPanel" class="hidden">
+      <div class="label">已注册 agent</div>
+      <div id="agents"></div>
+      <div class="label" style="margin-top:18px">房间成员</div>
+      <div id="members"></div>
+    </div>
   </aside>
 </div>
 <div class="modal hidden" id="manageModal">
@@ -666,7 +739,7 @@ function dashboardHtml() {
   </div>
 </div>
 <script>
-const state = { rooms: [], room: 'lobby', since: 0, es: null, roomData: null, agents: [] };
+const state = { rooms: [], room: 'lobby', since: 0, es: null, roomData: null, agents: [], tasks: [] };
 const $ = (id) => document.getElementById(id);
 function showError(message) { $('error').textContent = message || ''; }
 async function api(path, options) {
@@ -719,36 +792,71 @@ function renderParticipants(list) {
     box.appendChild(row);
   }
 }
+function taskStatusLabel(status) {
+  return { open: '待处理', in_progress: '处理中', resolved: '待验证', verified: '已验证', closed: '已关闭' }[status] || status;
+}
+
+async function taskAction(taskId, action, extra) {
+  try {
+    await api('/api/rooms/' + encodeURIComponent(state.room) + '/tasks/' + encodeURIComponent(taskId) + '/' + action, { method: 'POST', body: JSON.stringify(extra || {}) });
+    await selectRoom(state.room);
+  } catch (error) { showError(error.message); }
+}
+
+function renderTasks() {
+  const box = $('tasks'); box.innerHTML = '';
+  const tasks = state.tasks || [];
+  const count = (status) => tasks.filter((t) => t.status === status).length;
+  $('taskCounts').textContent = '任务 ' + tasks.length + ' · 待处理 ' + count('open') + ' · 处理中 ' + count('in_progress') + ' · 待验证 ' + count('resolved') + ' · 已验证 ' + count('verified');
+  for (const status of ['open', 'in_progress', 'resolved', 'verified', 'closed']) {
+    const list = tasks.filter((t) => t.status === status);
+    if (list.length === 0) continue;
+    const head = document.createElement('div'); head.className = 'label'; head.style.marginTop = '10px';
+    head.textContent = taskStatusLabel(status) + ' · ' + list.length;
+    box.appendChild(head);
+    for (const task of list) {
+      const card = document.createElement('div'); card.className = 'board-task';
+      const title = document.createElement('div'); title.className = 'bt-title';
+      title.textContent = task.title;
+      const badge = document.createElement('span'); badge.className = 'badge ' + task.status; badge.textContent = taskStatusLabel(task.status);
+      title.appendChild(badge); card.appendChild(title);
+      const meta = document.createElement('div'); meta.className = 'bt-meta';
+      meta.textContent = (task.assignee ? '负责人 ' + task.assignee : '未分配') + (task.createdBy ? ' · 由 ' + task.createdBy + ' 创建' : '');
+      card.appendChild(meta);
+      if (task.acceptance) { const a = document.createElement('div'); a.className = 'bt-accept'; a.textContent = '验收：' + task.acceptance; card.appendChild(a); }
+      if (task.detail) { const d = document.createElement('div'); d.className = 'bt-meta'; d.textContent = task.detail; card.appendChild(d); }
+      const actions = document.createElement('div'); actions.className = 'bt-actions';
+      if (task.status === 'open') {
+        const b = document.createElement('button'); b.textContent = '开始处理'; b.onclick = () => taskAction(task.taskId, 'claim'); actions.appendChild(b);
+      } else if (task.status === 'in_progress') {
+        const b = document.createElement('button'); b.textContent = '提交解决'; b.onclick = () => taskAction(task.taskId, 'resolve'); actions.appendChild(b);
+      } else if (task.status === 'resolved') {
+        const ok = document.createElement('button'); ok.textContent = '验证通过'; ok.onclick = () => taskAction(task.taskId, 'verify', { pass: true }); actions.appendChild(ok);
+        const no = document.createElement('button'); no.textContent = '验证不通过'; no.onclick = () => taskAction(task.taskId, 'verify', { pass: false, note: '验收未通过' }); actions.appendChild(no);
+      } else if (task.status === 'verified' && task.verifiedBy) {
+        const v = document.createElement('span'); v.className = 'bt-meta'; v.textContent = '验证人 ' + task.verifiedBy; actions.appendChild(v);
+      }
+      if (actions.childNodes.length) card.appendChild(actions);
+      box.appendChild(card);
+    }
+  }
+  if (tasks.length === 0) { const empty = document.createElement('div'); empty.className = 'bt-meta'; empty.textContent = '当前房间还没有任务，点「＋ 新任务」创建。'; box.appendChild(empty); }
+}
+
 function renderMessage(message) {
   const wrap = document.createElement('div');
   wrap.className = 'msg ' + (message.sender.kind === 'human' ? 'human' : 'agent');
   const meta = document.createElement('div'); meta.className = 'meta';
   meta.textContent = message.sender.name + ' · ' + new Date(message.time).toLocaleTimeString();
-  const bubble = document.createElement('div'); bubble.className = 'bubble';
-  if (message.task) {
-    const task = message.task;
-    bubble.classList.add('task-bubble');
-    const head = document.createElement('div'); head.className = 'task-head';
-    const title = document.createElement('span'); title.textContent = '📋 ' + task.title;
-    const tag = document.createElement('span'); tag.className = 'task-tag'; tag.textContent = task.status === 'done' ? '已完成' : '任务';
-    head.append(title, tag); bubble.appendChild(head);
-    if (task.detail) {
-      const detail = document.createElement('div'); detail.className = 'task-kv';
-      detail.textContent = task.detail; bubble.appendChild(detail);
-    }
-    if (task.acceptance) {
-      const acceptance = document.createElement('div'); acceptance.className = 'task-kv';
-      acceptance.textContent = '验收：' + task.acceptance; bubble.appendChild(acceptance);
-    }
-    if (task.assignee) {
-      const assignee = document.createElement('div'); assignee.className = 'task-kv';
-      assignee.textContent = '负责人：' + task.assignee; bubble.appendChild(assignee);
-    }
-  } else {
-    bubble.textContent = message.text;
+  if (message.type) {
+    const typeLabels = { progress: '进展', verify: '验证' };
+    const badge = document.createElement('span'); badge.className = 'type-badge';
+    badge.textContent = typeLabels[message.type] || message.type;
+    meta.appendChild(badge);
   }
+  const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = message.text;
   wrap.append(meta, bubble);
-  if (!message.task && message.text.length > 240) {
+  if (message.text.length > 240) {
     bubble.classList.add('collapsed');
     const expand = document.createElement('button'); expand.className = 'expand'; expand.textContent = '展开全文';
     expand.onclick = () => {
@@ -773,6 +881,12 @@ function connect() {
   es.addEventListener('participants', (event) => {
     const data = JSON.parse(event.data); renderParticipants(data.participants);
   });
+  es.addEventListener('tasks', (event) => {
+    const data = JSON.parse(event.data);
+    if (data.roomId !== state.room) return;
+    state.tasks = data.tasks || [];
+    renderTasks();
+  });
 }
 async function selectRoom(roomId) {
   state.room = roomId; state.since = 0;
@@ -785,7 +899,9 @@ async function selectRoom(roomId) {
     $('roomDesc').textContent = data.room.description || '本地协作房间';
     for (const message of data.messages || []) renderMessage(message);
     state.since = data.lastSeq || 0;
+    state.tasks = data.tasks || [];
     renderParticipants(data.participants);
+    renderTasks();
     connect();
   } catch (error) { showError(error.message); }
 }
@@ -793,7 +909,7 @@ async function sendMessage() {
   const text = $('input').value.trim(); if (!text) return;
   $('send').disabled = true; showError('');
   try {
-    await api('/api/rooms/' + encodeURIComponent(state.room) + '/messages', { method: 'POST', body: JSON.stringify({ text }) });
+    await api('/api/rooms/' + encodeURIComponent(state.room) + '/messages', { method: 'POST', body: JSON.stringify({ text, type: $('msgType').value }) });
     $('input').value = '';
   } catch (error) { showError(error.message); } finally { $('send').disabled = false; }
 }
@@ -872,6 +988,28 @@ $('mDelete').onclick = async () => {
     await api('/api/rooms/' + encodeURIComponent(state.room), { method: 'DELETE' });
     $('manageModal').classList.add('hidden');
     await refreshRooms(); await selectRoom('lobby');
+  } catch (error) { showError(error.message); }
+};
+
+$('tabTasks').onclick = () => { $('tabTasks').classList.add('active'); $('tabMembers').classList.remove('active'); $('tasksPanel').classList.remove('hidden'); $('membersPanel').classList.add('hidden'); };
+$('tabMembers').onclick = () => { $('tabMembers').classList.add('active'); $('tabTasks').classList.remove('active'); $('membersPanel').classList.remove('hidden'); $('tasksPanel').classList.add('hidden'); };
+$('newTask').onclick = () => $('taskForm').classList.toggle('hidden');
+$('taskCreate').onclick = async () => {
+  const title = $('taskTitle').value.trim();
+  if (!title) { showError('任务标题不能为空'); return; }
+  try {
+    await api('/api/rooms/' + encodeURIComponent(state.room) + '/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        title,
+        detail: $('taskDetail').value,
+        acceptance: $('taskAcceptance').value,
+        assignee: $('taskAssignee').value.trim() || undefined,
+      }),
+    });
+    $('taskTitle').value = ''; $('taskDetail').value = ''; $('taskAcceptance').value = ''; $('taskAssignee').value = '';
+    $('taskForm').classList.add('hidden');
+    await selectRoom(state.room);
   } catch (error) { showError(error.message); }
 };
 

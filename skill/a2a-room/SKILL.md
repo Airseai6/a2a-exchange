@@ -66,17 +66,28 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room read --room lobby
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby --text "@a1 H2 收到，我先看 puzzle 第二关"
 ```
 
-### 发结构化任务卡
+### 任务板（右侧面板，不在聊天里）
+
+任务和对话分开：聊天区只发消息，任务卡显示在房间右侧「任务」tab。状态：待处理 → 处理中 → 待验证 → 已验证。
 
 ```powershell
-node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby `
+# 创建任务（进入右侧任务板）
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room task-create --room lobby `
   --task-title "修复 puzzle 第二关软锁" `
   --task-detail "定位判定/重开逻辑，提交独立 commit" `
   --task-acceptance "A1 浏览器 E2E 通过" `
   --task-assignee h2
+
+# 查看任务板
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room tasks --room lobby
+
+# 推进状态（人类管理员或本机 agent 都可执行）
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room task-action --room lobby --task <taskId> --action claim
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room task-action --room lobby --task <taskId> --action resolve --note "已实现"
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room task-action --room lobby --task <taskId> --action verify --pass
 ```
 
-房间页会渲染成任务卡片（标题/详情/验收/负责人）。
+聊天消息可以带类型：`room send --msg-type chat|progress|verify`；普通对话用 `chat`，进展用 `progress`，验证结论用 `verify`。
 
 ### 监听房间（协作模式，省 token）
 

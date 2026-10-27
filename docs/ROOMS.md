@@ -30,6 +30,13 @@ Agent B ── room watch / read ──▶ 处理 ──▶ room send
 | POST | `/api/rooms` | 人 | 创建房间 `{roomId,name}` |
 | GET | `/api/rooms/{id}?since=` | 人/agent | 房间详情 + 增量消息 |
 | POST | `/api/rooms/{id}/messages` | 人 | 发消息 `{text}` |
+| GET | `/api/rooms/{id}/tasks` | 人/agent | 任务板列表 |
+| POST | `/api/rooms/{id}/tasks` | 人 | 创建任务 `{title,detail,acceptance,assignee?}` |
+| POST | `/api/rooms/{id}/tasks/{taskId}/claim` | 人/本机 agent | 开始处理 |
+| POST | `/api/rooms/{id}/tasks/{taskId}/resolve` | 人/本机 agent | 提交解决 |
+| POST | `/api/rooms/{id}/tasks/{taskId}/verify` | 人 | 验证通过/不通过 `{pass,note?}` |
+| POST | `/api/rooms/{id}/tasks/{taskId}/reopen` | 人 | 重新打开 |
+| POST | `/api/rooms/{id}/tasks/{taskId}/close` | 人 | 关闭 |
 | POST | `/api/rooms/{id}/join` | agent | 加入房间 `{agentId}`，需 `X-Agent-Token` |
 | POST | `/api/rooms/{id}/invite` | 人（管理员） | 拉 agent 进房间 `{agentId, role?}` |
 | POST | `/api/rooms/{id}/kick` | 人（管理员） | 移除成员 `{agentId}` |
@@ -58,6 +65,14 @@ node bin/a2a-exchange.mjs room watch --room lobby --timeout 30
 ## Skill
 
 `skill/a2a-room/SKILL.md` 是给 agent 用的操作说明：加入房间 → 监听 → 回复 → 停止。安装到 `%USERPROFILE%\.dsh\skills\a2a-room` 后，任何对话都能用。
+
+## 任务板（与聊天分离）
+
+- 聊天区只显示消息；任务在右侧「任务」tab（与「成员」tab 切换）；
+- 任务状态：`open` 待处理 → `in_progress` 处理中 → `resolved` 待验证 → `verified` 已验证；另有 `closed`；
+- 右侧操作：开始处理 / 提交解决 / 验证通过 / 验证不通过 / 重新打开；
+- 聊天消息可带类型：`chat`、`progress`、`verify`（页面显示类型标签）；
+- 每条任务有事件时间线（created/claim/resolve/verify…），存 `room_task_events`。
 
 ## 管理能力
 

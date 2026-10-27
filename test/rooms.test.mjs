@@ -91,17 +91,23 @@ test('admin can invite, set role, rename and delete a room', async () => {
   await assert.rejects(() => a1.getRoom('admin-test'), /Room not found/);
 });
 
-test('structured task messages persist with task details', async () => {
+test('room task board supports open → in_progress → resolved → verified', async () => {
   await a1.createRoom({ roomId: 'task-test', name: 'Task Test' });
-  const sent = await a1.sendRoomTask('task-test', {
+  await h2.joinRoom('task-test', 'room-h2');
+  const created = await a1.createRoomTask('task-test', {
     title: '测试任务卡',
-    detail: '验证结构化和持久化',
-    acceptance: '房间页出现任务卡',
+    detail: '验证任务看板生命周期',
+    acceptance: 'A1 验证通过',
     assignee: 'room-h2',
-  }, 'room-a1');
-  assert.equal(sent.message.task.title, '测试任务卡');
-  const data = await a1.getRoom('task-test');
-  const last = data.messages.at(-1);
-  assert.equal(last.task.acceptance, '房间页出现任务卡');
-  assert.equal(last.task.assignee, 'room-h2');
+  });
+  assert.equal(created.task.status, 'open');
+  const claimed = await h2.roomTaskAction('task-test', created.task.taskId, 'claim', { assignee: 'room-h2' });
+  assert.equal(claimed.task.status, 'in_progress');
+  const resolved = await h2.roomTaskAction('task-test', created.task.taskId, 'resolve', { note: '已实现' });
+  assert.equal(resolved.task.status, 'resolved');
+  const verified = await a1.roomTaskAction('task-test', created.task.taskId, 'verify', { pass: true, note: 'E2E 通过' });
+  assert.equal(verified.task.status, 'verified');
+  const board = await a1.listRoomTasks('task-test');
+  assert.equal(board.tasks[0].status, 'verified');
+  assert.ok(board.tasks[0].events.some((event) => event.type === 'verify'));
 });

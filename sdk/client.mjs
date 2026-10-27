@@ -242,11 +242,20 @@ export class ExchangeClient {
   async postHumanRoomMessage(roomId, text, name) {
     return this.request(`/api/rooms/${encodeURIComponent(roomId)}/messages`, { method: 'POST', body: { text, ...(name ? { name } : {}) } });
   }
-  async sendRoomMessage(roomId, text, agentId = this.agentId) {
-    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/agent-messages`, { method: 'POST', body: { agentId, text } });
+  async sendRoomMessage(roomId, text, agentId = this.agentId, type = 'chat') {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/agent-messages`, { method: 'POST', body: { agentId, text, ...(type && type !== 'chat' ? { type } : {}) } });
   }
   async sendRoomTask(roomId, task, agentId = this.agentId) {
     return this.request(`/api/rooms/${encodeURIComponent(roomId)}/agent-messages`, { method: 'POST', body: { agentId, text: task.title, task } });
+  }
+  async listRoomTasks(roomId) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/tasks`);
+  }
+  async createRoomTask(roomId, task) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/tasks`, { method: 'POST', body: task });
+  }
+  async roomTaskAction(roomId, taskId, action, extra = {}) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/tasks/${encodeURIComponent(taskId)}/${encodeURIComponent(action)}`, { method: 'POST', body: extra });
   }
   async readRoom(roomId, since = 0) {
     const data = await this.request(`/api/rooms/${encodeURIComponent(roomId)}?since=${encodeURIComponent(since)}&limit=500`);
