@@ -214,6 +214,9 @@ export class RoomService {
     const task = this.store.getRoomTask(taskId);
     if (!task || task.roomId !== roomId) throw new RpcError(-32004, 'Task not found', { a2aCode: 'TASK_NOT_FOUND' });
     const now = nowIso();
+    const previousStatus = task.status;
+    const previousAssignee = task.assignee;
+    const previousVerifier = task.verifier;
     const note = String(pick(params, 'note') ?? '').slice(0, 2000);
     if (action === 'assign') {
       if (pick(params, 'assignee')) task.assignee = String(pick(params, 'assignee'));
@@ -244,10 +247,12 @@ export class RoomService {
     this.store.putRoomTask(task);
     this.store.appendRoomTaskEvent({ taskId, type: action, actor, note });
     this.#publish(roomId, { type: 'tasks', roomId, tasks: this.listTasks(roomId) });
-    if (action === 'assign') this.#postTaskNotice(roomId, task, 'assigned');
-    if (action === 'resolve') this.#postTaskNotice(roomId, task, 'resolved');
-    if (action === 'verify') this.#postTaskNotice(roomId, task, task.status === 'verified' ? 'verified' : 'rejected');
-    if (action === 'reopen') this.#postTaskNotice(roomId, task, 'reopened');
+    const statusChanged = task.status !== previousStatus;
+    const assignChanged = task.assignee !== previousAssignee || task.verifier !== previousVerifier;
+    if (action === 'assign' && assignChanged) this.#postTaskNotice(roomId, task, 'assigned');
+    if (action === 'resolve' && statusChanged) this.#postTaskNotice(roomId, task, 'resolved');
+    if (action === 'verify' && statusChanged) this.#postTaskNotice(roomId, task, task.status === 'verified' ? 'verified' : 'rejected');
+    if (action === 'reopen' && statusChanged) this.#postTaskNotice(roomId, task, 'reopened');
     return { ...task, events: this.store.listRoomTaskEvents(task.taskId) };
   }
 

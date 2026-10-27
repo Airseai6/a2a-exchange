@@ -113,6 +113,10 @@ test('room task board supports open → in_progress → resolved → verified', 
   const afterResolve = await a1.getRoom('task-test');
   assert.equal(afterResolve.messages.at(-1).type, 'task');
   assert.match(afterResolve.messages.at(-1).text, /@room-a1/);
+  const seqBeforeDuplicate = afterResolve.lastSeq;
+  await h2.roomTaskAction('task-test', created.task.taskId, 'resolve', { note: '重复 resolve' });
+  const afterDuplicate = await a1.getRoom('task-test');
+  assert.equal(afterDuplicate.lastSeq, seqBeforeDuplicate, 'duplicate resolve must not emit another task notice');
   const verified = await a1.roomTaskAction('task-test', created.task.taskId, 'verify', { pass: true, note: 'E2E 通过' });
   assert.equal(verified.task.status, 'verified');
   const board = await a1.listRoomTasks('task-test');
