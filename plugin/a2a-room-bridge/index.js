@@ -12,7 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
-export const inject = ['sessionController'];
+export const inject = ['schedule'];
 
 const STATE_VERSION = 1;
 
@@ -105,14 +105,12 @@ export function apply(ctx, config = {}) {
           '请只处理与你相关的部分；处理后用 room send 回复 @对方；无关则一句话说明。',
         ].join('\n');
         try {
-          await ctx.sessionController.prompt({
-            requestId: randomUUID(),
-            sessionId: binding.sessionId,
-            mode: 'queue',
-            content: [{ type: 'text', text: prompt }],
-            clientTimeZone: 'Asia/Shanghai',
-          }, new AbortController().signal);
-          console.log(`[a2a-room-bridge] woke ${binding.agentId} seq=${batch.at(-1).seq}`);
+          await ctx.schedule.create(binding.sessionId, {
+            title: `A2A 房间 ${roomId} 唤醒`,
+            prompt,
+            after_seconds: 1,
+          });
+          console.log(`[a2a-room-bridge] scheduled wake ${binding.agentId} seq=${batch.at(-1).seq}`);
         } catch (error) {
           console.error(`[a2a-room-bridge] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
         }

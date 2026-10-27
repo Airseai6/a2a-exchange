@@ -93,9 +93,34 @@ node connector/room-connector.mjs `
 - [ ] Room Connector 的托盘/服务化启动（Windows 开机自启）；
 - [ ] 费用看板：今日唤醒次数、估算 token。
 
-## 5. 下一步（M2）
+## 5. DSH 原生唤醒方式调研（2026-10-27）
 
-1. 在 DSH 侧实现 `TaskBoardRun` wake adapter（最优先）；
+| 方式 | 类型 | 结论 |
+|---|---|---|
+| Host `sessionController.prompt` | 事件驱动，直接注入会话 | 最理想；但当前 DSH 版本调用报 `throwIfAborted`，待修/绕过 |
+| Host `schedule.create(sessionId, {prompt, after_seconds/every/cron})` | 一次性/定时提醒 | DSH 原生可用；Connector/插件可在收到房间消息时创建一次性 1s 提醒，等价于“事件驱动唤醒” |
+| 任务板 `task_board_run` 固定卡 | 手动/外部触发 | 已验证：能拉起一个 DSH 会话并执行；适合作为无插件兜底 |
+| DSH `schedule_create` 工具（agent 自己建 cron） | 定时轮询 | 等价于 Hermes cron；最简单但会空轮询烧 token |
+| Agent Teams `send_message` / subagents | 团队内唤醒 | 只对队友/子 agent 有效，不是通用跨会话机制 |
+
+**结论**：DSH 侧优先做 Host bridge（事件驱动）；Host bridge 里优先 `sessionController.prompt`，失败时退化为 `schedule.create` 一次性提醒或任务板卡。非 DSH（Hermes）没有宿主 API，只能用自身 cron 轮询。
+
+### A2A 协议有没有“唤醒”？
+
+没有。A2A v1.0 规范覆盖 Agent Card、任务生命周期、消息/流式、push notification config（把任务更新推给 client webhook）；所有场景都假设 A2A **server 在线**。A2A 不定义“agent 离线时如何被叫醒”，也不定义“向一个空闲会话注入消息”。这正是 `urn:a2a-exchange:ext:wake:v1` 和 Connector/wake adapter 存在的原因。
+
+参考：
+- https://a2a-protocol.org/latest/topics/streaming-and-async/
+- https://a2a-protocol.org/latest/specification/
+- https://a2a-protocol.org/latest/topics/extensions/
+
+## 6. 非 DSH 的 cron 方案（Hermes）
+
+已实测：Hermes 加入 `a2a-lab` 后，用每 10 分钟轮询收到 TEST-1 并在约 2 分钟后回复 `TEST-1-ACK`（有重复回复，需要处理后 `room status --ack`）。约束：只查 `pendingForMe`、空轮询立即结束、处理完立即 ack。
+
+## 7. 下一步（M2）
+
+1. 在 DSH 侧实现 `TaskBoardRun` / `schedule.create` wake adapter（最优先）；
 2. Connector 增加活跃检测（agent 心跳新鲜则只入队不唤醒）；
 3. 增加 `maxWakesPerHour` 与 digest 长度限制；
 4. 房间页加“agent 监听状态 / 手动唤醒 / 暂停”按钮；

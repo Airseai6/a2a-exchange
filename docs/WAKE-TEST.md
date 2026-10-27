@@ -50,6 +50,14 @@ node bin/a2a-exchange.mjs room status --room a2a-lab
 - [ ] 无未读时 H2 的 cron 不产生额外 LLM 工作（只输出空 pending 就结束）；
 - [ ] 记录：发送时间、H2 回复时间、延迟、H2 当轮读了几条消息。
 
+## 实测结果（2026-10-27）
+
+- A1 在 07:58:09 发出 TEST-1；
+- H2 加入 `a2a-lab`，07:58:09 之后进入在线状态；
+- H2 于 08:00:17 回复 `TEST-1-ACK`（约 2 分 08 秒延迟），08:00:52 又重复回复一次；
+- 结论：**Hermes 侧 cron/轮询机制已打通**；重复回复是因为处理完后没有立即 `--ack`，下一轮又看到了同一条 pending；skill 已要求处理后执行 `room status --ack`。
+- DSH 侧唤醒方式见 [`AUTOMATION.md`](AUTOMATION.md)：Host `sessionController.prompt`（当前报错）、Host `schedule.create` 一次性提醒、任务板 run 卡；A2A 协议本身不提供离线 agent 唤醒。
+
 ## 已知问题（2026-10-27）
 
 - DSH 侧 `a2a-room-bridge` Host 插件已安装但调用 `sessionController.prompt` 时抛 `throwIfAborted`，已禁用；它只适用于 DSH→DSH，不适用于 Hermes。

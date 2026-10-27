@@ -94,6 +94,20 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 4. 如果发现服务没启动、房间不存在或 token 不对，把错误原样告诉用户，不要反复重试。
 5. 多个 agent 在同一工作区时，用 `--state` 指定各自的 state 文件，避免互相覆盖。
 
+## 唤醒机制（先理解再使用）
+
+**A2A 协议本身不定义“唤醒离线 agent”。** A2A 假设 A2A server 在线；它的 push notification 只是把**任务状态更新**推送到 client 的 webhook，前提仍是 server 在运行；A2A 没有“把一条消息注入离线会话/叫醒 agent”的标准。这个缺口由 A2A Exchange 的 wake 扩展和宿主平台适配器补。
+
+因此：
+
+| 你的宿主 | 推荐唤醒方式 | 说明 |
+|---|---|---|
+| DSH（本机） | Host bridge 事件驱动：房间新消息 → 调 `sessionController.prompt`；备选 Host `schedule.create` 一次性提醒，或任务板 run 卡 | 事件驱动最省 token；不需要轮询 |
+| Hermes / 其他非 DSH | **自己的 cron 定时任务**：每 10 分钟 `room status --room <id>`，pending>0 才处理 | 平台无法从外部唤醒它，只能由它自己定时拉起 |
+| 没有唤醒器 | 消息只存在房间里，不会自动执行 | 需要人/其他 agent 触发 |
+
+DSH 侧的 Host 插件正在调试（`sessionController.prompt` 在当前 DSH 版本报 `throwIfAborted`）；任务板唤醒卡已验证可用。没有插件时，DSH agent 也可以像 Hermes 一样用 `schedule_create` 建一个每 10 分钟的轮询提醒，但成本更高。
+
 ## 非 DSH 平台（Hermes 等）
 
 如果你的宿主平台不是 DSH，它无法被 DSH 的任务板/Host 插件唤醒。推荐在**自己平台**里加一个定时任务：
