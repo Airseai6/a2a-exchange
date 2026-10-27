@@ -487,22 +487,18 @@ export async function main(argv = process.argv.slice(2)) {
         } else if (sub === 'send') {
           print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId));
         } else if (sub === 'status') {
-          const seen = state.roomSeen?.[roomId] ?? 0;
-          const data = await client.readRoom(roomId, seen);
-          const pending = data.messages
-            .filter((message) => isMentionedFor(message, agentId, agentName))
-            .map(compactRoomMessage);
+          const pending = await client.roomPending(roomId, agentId);
           print({
             roomId,
             agentId,
-            lastSeq: data.lastSeq,
-            unreadCount: data.messages.length,
-            firstUnreadSeq: data.messages[0]?.seq ?? null,
-            pendingForMe: pending.slice(-5),
-            pendingCount: pending.length,
-            lastMessage: data.messages.length ? compactRoomMessage(data.messages.at(-1)) : null,
+            lastSeq: pending.lastSeq,
+            unreadCount: pending.pendingCount,
+            firstUnreadSeq: pending.pendingForMe[0]?.seq ?? null,
+            pendingCount: pending.pendingCount,
+            pendingForMe: pending.pendingCount > 0 ? pending.pendingForMe.slice(-5) : [],
+            lastMessage: pending.pendingForMe.at(-1) ?? null,
           });
-          if (opts.ack) saveRoomSeen(opts, roomId, data.lastSeq);
+          if (opts.ack) await client.roomAck(roomId, agentId, pending.lastSeq);
         } else if (sub === 'read') {
           const since = opts.since !== undefined ? Number(opts.since) : (state.roomSeen?.[roomId] ?? 0);
           const data = await client.readRoom(roomId, since);

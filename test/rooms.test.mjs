@@ -63,3 +63,30 @@ test('invalid room ids and unknown rooms are rejected', async () => {
   await assert.rejects(() => a1.createRoom({ roomId: 'BAD ID', name: 'x' }), /Invalid roomId/);
   await assert.rejects(() => a1.getRoom('missing-room'), /Room not found/);
 });
+
+test('server-side pending/ack is independent from local state', async () => {
+  await a1.createRoom({ roomId: 'ack-test', name: 'Ack Test' });
+  await h2.joinRoom('ack-test', 'room-h2');
+  await a1.sendRoomMessage('ack-test', '@room-h2 请处理 ack 测试', 'room-a1');
+  const pending = await h2.roomPending('ack-test', 'room-h2');
+  assert.ok(pending.pendingCount >= 1);
+  await h2.roomAck('ack-test', 'room-h2', pending.lastSeq);
+  const after = await h2.roomPending('ack-test', 'room-h2');
+  assert.equal(after.pendingCount, 0);
+});
+
+test('admin can invite, set role, rename and delete a room', async () => {
+  await a1.createRoom({ roomId: 'admin-test', name: 'Admin Test' });
+  await a1.inviteRoom('admin-test', 'room-h2', 'admin');
+  await a1.setRoomRole('admin-test', 'room-h2', 'member');
+  const renamed = await a1.updateRoom('admin-test', { name: 'Admin Renamed', description: 'managed' });
+  assert.equal(renamed.room.name, 'Admin Renamed');
+  const data = await a1.getRoom('admin-test');
+  const member = data.participants.find((p) => p.agentId === 'room-h2');
+  assert.equal(member.role, 'member');
+  await a1.kickRoom('admin-test', 'room-h2');
+  const afterKick = await a1.getRoom('admin-test');
+  assert.ok(!afterKick.participants.some((p) => p.agentId === 'room-h2'));
+  await a1.deleteRoom('admin-test');
+  await assert.rejects(() => a1.getRoom('admin-test'), /Room not found/);
+});

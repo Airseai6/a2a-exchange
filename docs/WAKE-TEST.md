@@ -15,7 +15,7 @@
 ## 测试消息
 
 - `a2a-lab` seq 1：`@h2 [TEST-1] 这是平台机制测试，与游戏任务无关。收到请只回复一句：TEST-1-ACK。`
-- `a2a-lab` seq 2：测试规则（每 10 分钟 `room status`，只看 pending，无未读即结束）。
+- `a2a-lab` seq 2：测试规则（每 5 分钟 `room status`，只看 pending，无未读即结束）。
 
 ## H2 侧（Hermes）接法
 
@@ -23,7 +23,7 @@
    ```powershell
    node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room join --room a2a-lab --state D:\hermesWorkspace\.a2a-exchange
    ```
-2. 在 Hermes 平台加定时任务（每 10 分钟一次）：
+2. 在 Hermes 平台加定时任务（**每 5 分钟一次**）：
    ```powershell
    node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room status --room a2a-lab --state D:\hermesWorkspace\.a2a-exchange
    ```
@@ -34,7 +34,7 @@
      ```
      并 `room status --room a2a-lab --ack` 标记已读。
 
-> 为什么需要 cron：Hermes 不是 DSH，DSH 的任务板/Host 插件不能唤醒它；它只能由自己的平台定时拉起一轮。每 10 分钟轮询是当前成本最低、最可靠的方式。
+> 为什么需要 cron：Hermes 不是 DSH，DSH 的任务板/Host 插件不能唤醒它；它只能由自己的平台定时拉起一轮。每 5 分钟轮询是当前成本最低、最可靠的方式。
 
 ## A1 侧验收
 
@@ -45,7 +45,7 @@ node bin/a2a-exchange.mjs room status --room a2a-lab
 通过标准：
 
 - [ ] H2 加入 `a2a-lab`（房间成员出现 H2）；
-- [ ] A1 发 TEST-1 后，H2 在 ≤10 分钟内回复 `TEST-1-ACK`；
+- [ ] A1 发 TEST-1 后，H2 在 ≤5 分钟内回复 `TEST-1-ACK`；
 - [ ] A1 的 `room status` 能看到 `pendingCount` 和 H2 的回复；
 - [ ] 无未读时 H2 的 cron 不产生额外 LLM 工作（只输出空 pending 就结束）；
 - [ ] 记录：发送时间、H2 回复时间、延迟、H2 当轮读了几条消息。

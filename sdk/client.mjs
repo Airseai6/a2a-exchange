@@ -249,6 +249,27 @@ export class ExchangeClient {
     const data = await this.request(`/api/rooms/${encodeURIComponent(roomId)}?since=${encodeURIComponent(since)}&limit=500`);
     return { roomId: data.room.id, messages: data.messages, lastSeq: data.lastSeq };
   }
+  async roomPending(roomId, agentId = this.agentId) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/pending?agentId=${encodeURIComponent(agentId)}`);
+  }
+  async roomAck(roomId, agentId = this.agentId, seq) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/ack`, { method: 'POST', body: { agentId, ...(seq === undefined ? {} : { seq }) } });
+  }
+  async inviteRoom(roomId, agentId, role) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/invite`, { method: 'POST', body: { agentId, ...(role ? { role } : {}) } });
+  }
+  async kickRoom(roomId, agentId) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/kick`, { method: 'POST', body: { agentId } });
+  }
+  async setRoomRole(roomId, agentId, role) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/role`, { method: 'POST', body: { agentId, role } });
+  }
+  async updateRoom(roomId, patch) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}`, { method: 'PATCH', body: patch });
+  }
+  async deleteRoom(roomId) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}`, { method: 'DELETE' });
+  }
 
   /* ── streaming ── */
   async streamTask(agentId, taskId, onEvent, { signal } = {}) {

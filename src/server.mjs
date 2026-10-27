@@ -89,7 +89,7 @@ export function createExchangeServer(options = {}) {
   const registry = new Registry(store, {
     syncWaitMs: options.syncWaitMs ?? 20000,
     hubVersion: options.version ?? '0.1.0',
-    heartbeatTtlSeconds: options.heartbeatTtlSeconds ?? 120,
+    heartbeatTtlSeconds: options.heartbeatTtlSeconds ?? 900,
     baseUrl: options.baseUrl ?? 'http://127.0.0.1:8787',
   });
   const tasks = new TaskService(store, registry);
@@ -335,6 +335,23 @@ export function createExchangeServer(options = {}) {
         });
         return;
       }
+      const roomPendingMatch = /^\/api\/rooms\/([^/]+)\/pending$/.exec(path);
+      if (roomPendingMatch && req.method === 'GET') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomPendingMatch[1]);
+        const agentId = String(url.searchParams.get('agentId') ?? url.searchParams.get('agent') ?? '');
+        if (!agentId) throw new HttpError(400, 'agentId is required');
+        return sendJson(res, 200, rooms.pending(roomId, agentId));
+      }
+      const roomAckMatch = /^\/api\/rooms\/([^/]+)\/ack$/.exec(path);
+      if (roomAckMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomAckMatch[1]);
+        const body = await readJsonBody(req);
+        const agentId = String(pick(body, 'agentId', 'agent_id') ?? '');
+        if (!agentId) throw new HttpError(400, 'agentId is required');
+        return sendJson(res, 200, rooms.ack(roomId, agentId, pick(body, 'seq', 'lastSeq', 'last_seq')));
+      }
       const roomGetMatch = /^\/api\/rooms\/([^/]+)$/.exec(path);
       if (roomGetMatch && req.method === 'GET') {
         if (!humanAllowed(req)) return unauthenticated(res);
@@ -358,7 +375,41 @@ export function createExchangeServer(options = {}) {
         const body = await readJsonBody(req);
         const agentId = String(pick(body, 'agentId', 'agent_id') ?? '');
         if (!agentId || !checks.agent(req, agentId)) return unauthenticated(res);
-        return sendJson(res, 200, rooms.join(roomId, agentId));
+        return sendJson(res, 200, rooms.join(roomId, agentId, body));
+      }
+      const roomInviteMatch = /^\/api\/rooms\/([^/]+)\/invite$/.exec(path);
+      if (roomInviteMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomInviteMatch[1]);
+        const body = await readJsonBody(req);
+        const agentId = String(pick(body, 'agentId', 'agent_id') ?? '');
+        return sendJson(res, 200, rooms.join(roomId, agentId, { role: body.role }));
+      }
+      const roomKickMatch = /^\/api\/rooms\/([^/]+)\/kick$/.exec(path);
+      if (roomKickMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomKickMatch[1]);
+        const body = await readJsonBody(req);
+        return sendJson(res, 200, rooms.leave(roomId, String(pick(body, 'agentId', 'agent_id') ?? '')));
+      }
+      const roomRoleMatch = /^\/api\/rooms\/([^/]+)\/role$/.exec(path);
+      if (roomRoleMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomRoleMatch[1]);
+        const body = await readJsonBody(req);
+        return sendJson(res, 200, rooms.setRole(roomId, String(pick(body, 'agentId', 'agent_id') ?? ''), String(pick(body, 'role') ?? 'member')));
+      }
+      if (roomGetMatch && req.method === 'PATCH') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomGetMatch[1]);
+        const body = await readJsonBody(req);
+        return sendJson(res, 200, rooms.update(roomId, body));
+      }
+      if (roomGetMatch && req.method === 'DELETE') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomGetMatch[1]);
+        if (roomId === 'lobby') throw new HttpError(400, 'Cannot delete the lobby room');
+        return sendJson(res, 200, rooms.destroy(roomId));
       }
       const roomAgentMessageMatch = /^\/api\/rooms\/([^/]+)\/agent-messages$/.exec(path);
       if (roomAgentMessageMatch && req.method === 'POST') {
@@ -503,6 +554,23 @@ function dashboardHtml() {
   .room span { color:var(--muted); font-size:11px; }
   button.new { width:100%; background:var(--panel); color:var(--text); border:1px dashed var(--line); border-radius:9px; padding:8px; cursor:pointer; font-size:12px; }
   button.new:hover { border-color:var(--accent); }
+  button.manage { width:100%; margin-top:6px; background:transparent; color:var(--text); border:1px solid var(--line); border-radius:9px; padding:8px; cursor:pointer; font-size:12px; }
+  button.manage:hover { border-color:var(--accent); }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal.hidden { display:none; }
+  .modal-card { width:560px; max-width:94vw; max-height:86vh; overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .modal-head h3 { margin:0; font-size:16px; }
+  .modal-card label { display:block; font-size:12px; color:var(--muted); margin:8px 0 4px; }
+  .modal-card input, .modal-card select { width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-family:inherit; font-size:13px; }
+  .modal-card button { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 12px; cursor:pointer; font-size:13px; }
+  .modal-card button:hover { border-color:var(--accent); }
+  .modal-card button.danger { border-color:#7a3434; color:#ff9b9b; }
+  .m-row { display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); }
+  .m-row .m-name { flex:1; font-size:13px; }
+  .m-row select { width:100px; }
+  .invite-row { display:flex; gap:8px; align-items:center; }
+  .invite-row select { flex:1; }
   main { min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
   .roomhead { padding:14px 20px; border-bottom:1px solid var(--line); }
   .roomhead h2 { margin:0 0 4px; font-size:17px; }
@@ -545,6 +613,7 @@ function dashboardHtml() {
     <div class="label">房间</div>
     <div id="rooms"></div>
     <button class="new" id="newRoom">＋ 新建房间</button>
+    <button class="manage" id="manageRoom">⚙ 管理当前房间</button>
   </aside>
   <main>
     <div class="roomhead"><h2 id="roomTitle">协作大厅</h2><p id="roomDesc">正在加载…</p></div>
@@ -562,8 +631,23 @@ function dashboardHtml() {
     <div id="members"></div>
   </aside>
 </div>
+<div class="modal hidden" id="manageModal">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="mTitle">管理房间</h3><button id="mClose">×</button></div>
+    <label>房间名</label>
+    <input id="mName" />
+    <label>描述</label>
+    <input id="mDesc" />
+    <div style="margin-top:10px"><button id="mSave">保存房间信息</button></div>
+    <div class="label" style="margin-top:16px">邀请 agent 进房间</div>
+    <div class="invite-row"><select id="mAgentSelect"></select><button id="mInvite">拉入</button></div>
+    <div class="label" style="margin-top:16px">成员与角色</div>
+    <div id="mMembers"></div>
+    <div style="margin-top:18px"><button class="danger" id="mDelete">删除房间</button></div>
+  </div>
+</div>
 <script>
-const state = { rooms: [], room: 'lobby', since: 0, es: null };
+const state = { rooms: [], room: 'lobby', since: 0, es: null, roomData: null, agents: [] };
 const $ = (id) => document.getElementById(id);
 function showError(message) { $('error').textContent = message || ''; }
 async function api(path, options) {
@@ -589,8 +673,9 @@ async function refreshRooms() {
 async function refreshAgents() {
   try {
     const data = await api('/api/agents');
+    state.agents = data.agents || [];
     const box = $('agents'); box.innerHTML = '';
-    for (const agent of data.agents || []) {
+    for (const agent of state.agents) {
       const row = document.createElement('div'); row.className = 'agent-row';
       const dot = document.createElement('span'); dot.className = 'dot ' + agent.status;
       const info = document.createElement('div');
@@ -647,6 +732,7 @@ async function selectRoom(roomId) {
   $('messages').innerHTML = ''; showError('');
   try {
     const data = await api('/api/rooms/' + encodeURIComponent(roomId));
+    state.roomData = data;
     $('roomTitle').textContent = data.room.name;
     $('roomDesc').textContent = data.room.description || '本地协作房间';
     for (const message of data.messages || []) renderMessage(message);
@@ -673,6 +759,75 @@ $('newRoom').onclick = async () => {
   const name = (prompt('房间名称', id) || id).trim();
   try { await api('/api/rooms', { method: 'POST', body: JSON.stringify({ roomId: id, name }) }); await refreshRooms(); await selectRoom(id); } catch (error) { showError(error.message); }
 };
+
+function renderManageMembers(participants) {
+  const box = $('mMembers'); box.innerHTML = '';
+  for (const p of participants || []) {
+    const row = document.createElement('div'); row.className = 'm-row';
+    const name = document.createElement('div'); name.className = 'm-name'; name.textContent = p.name + ' · ' + p.agentId;
+    const role = document.createElement('select');
+    for (const r of ['admin', 'member']) {
+      const opt = document.createElement('option'); opt.value = r; opt.textContent = r === 'admin' ? '管理员' : '成员'; role.appendChild(opt);
+    }
+    role.value = p.role || 'member';
+    role.onchange = async () => {
+      try { await api('/api/rooms/' + encodeURIComponent(state.room) + '/role', { method: 'POST', body: JSON.stringify({ agentId: p.agentId, role: role.value }) }); await selectRoom(state.room); openManage(); }
+      catch (error) { showError(error.message); }
+    };
+    const kick = document.createElement('button'); kick.className = 'danger'; kick.textContent = '移除';
+    kick.onclick = async () => {
+      if (!confirm('从房间移除 ' + p.name + '？')) return;
+      try { await api('/api/rooms/' + encodeURIComponent(state.room) + '/kick', { method: 'POST', body: JSON.stringify({ agentId: p.agentId }) }); await selectRoom(state.room); openManage(); }
+      catch (error) { showError(error.message); }
+    };
+    row.append(name, role, kick); box.appendChild(row);
+  }
+}
+
+function openManage() {
+  const data = state.roomData; if (!data) return;
+  $('mTitle').textContent = '管理房间 · ' + data.room.name;
+  $('mName').value = data.room.name;
+  $('mDesc').value = data.room.description || '';
+  const select = $('mAgentSelect'); select.innerHTML = '';
+  const members = new Set((data.participants || []).map((p) => p.agentId));
+  const available = (state.agents || []).filter((a) => !members.has(a.agentId));
+  if (available.length === 0) {
+    const opt = document.createElement('option'); opt.textContent = '（没有可邀请的已注册 agent）'; opt.disabled = true; select.appendChild(opt);
+  }
+  for (const agent of available) {
+    const opt = document.createElement('option'); opt.value = agent.agentId; opt.textContent = agent.name + ' · ' + agent.agentId; select.appendChild(opt);
+  }
+  renderManageMembers(data.participants);
+  $('mDelete').style.display = data.room.id === 'lobby' ? 'none' : 'inline-block';
+  $('manageModal').classList.remove('hidden');
+}
+
+$('manageRoom').onclick = openManage;
+$('mClose').onclick = () => $('manageModal').classList.add('hidden');
+$('mSave').onclick = async () => {
+  try {
+    await api('/api/rooms/' + encodeURIComponent(state.room), { method: 'PATCH', body: JSON.stringify({ name: $('mName').value, description: $('mDesc').value }) });
+    await refreshRooms(); await selectRoom(state.room); openManage();
+  } catch (error) { showError(error.message); }
+};
+$('mInvite').onclick = async () => {
+  const agentId = $('mAgentSelect').value;
+  if (!agentId) return;
+  try {
+    await api('/api/rooms/' + encodeURIComponent(state.room) + '/invite', { method: 'POST', body: JSON.stringify({ agentId }) });
+    await refreshRooms(); await selectRoom(state.room); openManage();
+  } catch (error) { showError(error.message); }
+};
+$('mDelete').onclick = async () => {
+  if (!confirm('删除房间 ' + state.room + '？消息会一起删除。')) return;
+  try {
+    await api('/api/rooms/' + encodeURIComponent(state.room), { method: 'DELETE' });
+    $('manageModal').classList.add('hidden');
+    await refreshRooms(); await selectRoom('lobby');
+  } catch (error) { showError(error.message); }
+};
+
 (async () => {
   await refreshRooms(); await refreshAgents();
   const initialRoom = new URLSearchParams(location.search).get('room') || state.room;

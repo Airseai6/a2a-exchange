@@ -35,6 +35,7 @@ export class RoomService {
       updatedAt: nowIso(),
       nextSeq: 1,
       participants: {},
+      acks: {},
       messages: [],
     };
     this.store.putRoom(room);
@@ -82,6 +83,7 @@ export class RoomService {
       return {
         agentId: p.agentId,
         name: p.name,
+        role: p.role ?? 'member',
         joinedAt: p.joinedAt,
         lastSeen: agent?.lastSeen ?? p.lastSeen ?? null,
         status: agent ? agentStatus(agent) : 'offline',
@@ -90,20 +92,49 @@ export class RoomService {
     });
   }
 
-  join(roomId, agentId) {
+  join(roomId, agentId, params = {}) {
     const room = this.#requireRoom(roomId);
     const agent = this.registry.requireAgent(agentId);
+    const role = params.role === 'admin' ? 'admin' : 'member';
     agent.lastSeen = new Date().toISOString();
-    this.store.putAgent(agent);
-    room.participants[agentId] = {
+    this.store.putAgent(agent);    room.participants[agentId] = {
       agentId,
       name: agent.card?.name ?? agentId,
+      role: room.participants[agentId]?.role ?? role,
       joinedAt: room.participants[agentId]?.joinedAt ?? nowIso(),
       lastSeen: nowIso(),
     };
     this.store.putRoom(room);
     this.#publish(roomId, { type: 'participants', roomId, participants: this.participants(room) });
     return { room: this.summary(room), participant: room.participants[agentId] };
+  }
+
+  setRole(roomId, agentId, role) {
+    const room = this.#requireRoom(roomId);
+    if (!room.participants[agentId]) throw new RpcError(-32004, `Agent not in room: ${agentId}`, { a2aCode: 'AGENT_NOT_FOUND' });
+    room.participants[agentId].role = role === 'admin' ? 'admin' : 'member';
+    this.store.putRoom(room);
+    this.#publish(roomId, { type: 'participants', roomId, participants: this.participants(room) });
+    return { ok: true, roomId, agentId, role: room.participants[agentId].role };
+  }
+
+  update(roomId, params = {}) {
+    const room = this.#requireRoom(roomId);
+    if (params.name !== undefined) {
+      const name = String(params.name).trim();
+      if (!name) throw new RpcError(-32602, 'Room name is required', { a2aCode: 'INVALID_ARGUMENT' });
+      room.name = name;
+    }
+    if (params.description !== undefined) room.description = String(params.description);
+    this.store.putRoom(room);
+    this.#publish(roomId, { type: 'participants', roomId, participants: this.participants(room) });
+    return { ok: true, room: this.summary(room) };
+  }
+
+  destroy(roomId) {
+    const room = this.#requireRoom(roomId);
+    this.store.deleteRoom(roomId);
+    return { ok: true, roomId, name: room.name };
   }
 
   leave(roomId, agentId) {
@@ -113,7 +144,6 @@ export class RoomService {
     this.#publish(roomId, { type: 'participants', roomId, participants: this.participants(room) });
     return { ok: true, room: this.summary(room) };
   }
-
   postHuman(roomId, params = {}) {
     const room = this.#requireRoom(roomId);
     const text = this.#cleanText(pick(params, 'text'));
@@ -131,6 +161,7 @@ export class RoomService {
       room.participants[agentId] = {
         agentId,
         name: agent.card?.name ?? agentId,
+        role: 'member',
         joinedAt: nowIso(),
         lastSeen: nowIso(),
       };
@@ -148,6 +179,47 @@ export class RoomService {
     const limit = Math.min(Math.max(Number(pick(params, 'limit') ?? 200), 1), 500);
     const messages = room.messages.filter((m) => m.seq > since).slice(0, limit);
     return { roomId, messages, lastSeq: room.nextSeq - 1 };
+  }
+
+  /** Server-side unread/pending for one agent (survives local state loss). */
+  pending(roomId, agentId) {
+    const room = this.#requireRoom(roomId);
+    const agent = this.registry.requireAgent(agentId);
+    if (!room.acks) room.acks = {};
+    const since = Number(room.acks[agentId] ?? 0);
+    const name = agent.card?.name ?? agentId;
+    const messages = room.messages.filter((m) => m.seq > since && this.#mentions(m.text, agentId, name));
+    return {
+      roomId,
+      agentId,
+      since,
+      lastSeq: room.nextSeq - 1,
+      pendingCount: messages.length,
+      pendingForMe: messages.map((m) => ({
+        seq: m.seq,
+        from: m.sender?.name ?? 'unknown',
+        kind: m.sender?.kind ?? 'agent',
+        text: m.text,
+        time: m.time,
+      })),
+    };
+  }
+
+  ack(roomId, agentId, seq) {
+    const room = this.#requireRoom(roomId);
+    if (!room.acks) room.acks = {};
+    const target = Math.min(Number(seq ?? room.nextSeq - 1) || 0, room.nextSeq - 1);
+    room.acks[agentId] = Math.max(Number(room.acks[agentId] ?? 0), target);
+    this.store.putRoom(room);
+    return { ok: true, roomId, agentId, ackSeq: room.acks[agentId] };
+  }
+
+  #mentions(text, agentId, agentName) {
+    const value = String(text ?? '');
+    const lower = value.toLowerCase();
+    return lower.includes('@all') ||
+      lower.includes('@' + String(agentId).toLowerCase()) ||
+      (agentName ? value.includes('@' + agentName) : false);
   }
 
   subscribe(roomId, fn) {

@@ -15,7 +15,7 @@ export class Registry {
     this.store = store;
     this.syncWaitMs = options.syncWaitMs ?? 20000;
     this.hubVersion = options.hubVersion ?? '0.1.0';
-    this.defaultHeartbeatTtlSeconds = options.heartbeatTtlSeconds ?? 120;
+    this.defaultHeartbeatTtlSeconds = options.heartbeatTtlSeconds ?? 900;
     this.baseUrl = options.baseUrl ?? 'http://127.0.0.1:8787';
   }
 

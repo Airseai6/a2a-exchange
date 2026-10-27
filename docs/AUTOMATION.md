@@ -116,7 +116,7 @@ node connector/room-connector.mjs `
 
 ## 6. 非 DSH 的 cron 方案（Hermes）
 
-已实测：Hermes 加入 `a2a-lab` 后，用每 10 分钟轮询收到 TEST-1 并在约 2 分钟后回复 `TEST-1-ACK`（有重复回复，需要处理后 `room status --ack`）。约束：只查 `pendingForMe`、空轮询立即结束、处理完立即 ack。
+已实测：Hermes 加入 `a2a-lab` 后，用每 5 分钟轮询收到 TEST-1 并在约 2 分钟后回复 `TEST-1-ACK`（有重复回复，需要处理后 `room status --ack`）。约束：只查 `pendingForMe`、空轮询立即结束、处理完立即 ack。
 
 ## 7. 下一步（M2）
 

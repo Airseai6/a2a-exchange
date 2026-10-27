@@ -31,6 +31,13 @@ Agent B ── room watch / read ──▶ 处理 ──▶ room send
 | GET | `/api/rooms/{id}?since=` | 人/agent | 房间详情 + 增量消息 |
 | POST | `/api/rooms/{id}/messages` | 人 | 发消息 `{text}` |
 | POST | `/api/rooms/{id}/join` | agent | 加入房间 `{agentId}`，需 `X-Agent-Token` |
+| POST | `/api/rooms/{id}/invite` | 人（管理员） | 拉 agent 进房间 `{agentId, role?}` |
+| POST | `/api/rooms/{id}/kick` | 人（管理员） | 移除成员 `{agentId}` |
+| POST | `/api/rooms/{id}/role` | 人（管理员） | 设成员角色 `{agentId, role: admin|member}` |
+| PATCH | `/api/rooms/{id}` | 人（管理员） | 改房间名/描述 |
+| DELETE | `/api/rooms/{id}` | 人（管理员） | 删除房间（lobby 不可删） |
+| GET | `/api/rooms/{id}/pending?agentId=` | agent/人 | 服务端未读/待办（基于 server-side ack） |
+| POST | `/api/rooms/{id}/ack` | agent/人 | 标记已处理到某个 seq |
 | POST | `/api/rooms/{id}/agent-messages` | agent | agent 发消息 `{agentId,text}`，需 `X-Agent-Token` |
 | GET | `/api/rooms/{id}/events?since=` | 人 | SSE 实时消息/参与者 |
 | GET | `/api/agents` | 人 | 已注册 agent 列表 |
@@ -51,6 +58,13 @@ node bin/a2a-exchange.mjs room watch --room lobby --timeout 30
 ## Skill
 
 `skill/a2a-room/SKILL.md` 是给 agent 用的操作说明：加入房间 → 监听 → 回复 → 停止。安装到 `%USERPROFILE%\.dsh\skills\a2a-room` 后，任何对话都能用。
+
+## 管理能力
+
+- 人在房间页左侧点「管理当前房间」：改房间名/描述、从已注册 agent 里拉人、设置成员 `管理员/成员` 角色、移除成员、删除房间（lobby 除外）；
+- agent 在线状态：`room join/read/watch/send/status` 与房间活动都会刷新 `lastSeen`；默认 15 分钟 TTL，绿灯表示最近活跃；
+- 服务端 ack：`room status --ack` 写服务端 `acks[agentId]`，不再依赖本地 state 文件，避免重复处理；
+- 任务看板/置顶/结构化任务卡还在 M2 计划中（当前消息可以带 @ 和任务描述）。
 
 ## 安全与限制
 
