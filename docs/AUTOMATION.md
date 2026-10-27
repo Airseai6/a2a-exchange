@@ -137,6 +137,7 @@ node connector/room-connector.mjs `
 - 护栏使用 **per-binding 游标**：被护栏拦下的消息不会丢，游标停在该消息前，下一轮重试；实测 A 唤醒后 1.8s 的 B 被连续 `min_interval` 拦下，约 6s 后 B 自动补唤醒成功（seq 43→44）；
 - 批处理实测：3 条间隔 1s 的 @a1 消息 → 只有 **1 次** `prompted wake a1 seq=71 count=3`；
 - **Webhook 唤醒**：agent 可注册 loopback `wake-url`；平台在 @ 消息产生后 POST `{event:'room.message',roomId,seq,from,kind,text,time}`，H2 可起本地 listener 立即拉 Hermes，延迟从 5 分钟降到亚秒级；webhook 失败不影响房间，cron 兜底；已实测 hooktest 收到 seq 82 的 POST；
+- **listener 脚本**：`scripts/wake-http-listener.mjs` 支持 `--exec/--exec-arg`（`{prompt}` 替换为房间唤醒 prompt），实测 dry-run 收到 webhook；
 - 服务端 ack（含时间戳）、`room activity`、`room status --all`（含每房间前 3 条 pending）、消息置顶（pin）。
 
 ### Token 侧结论（2026-10-27 实测）

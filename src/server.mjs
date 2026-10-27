@@ -777,6 +777,9 @@ function dashboardHtml() {
         <input id="taskAcceptance" placeholder="验收标准（可选）" />
         <input id="taskAssignee" placeholder="负责人 agentId（可选）" />
         <input id="taskVerifier" placeholder="验收 agentId（可选）" />
+        <input id="taskBranch" placeholder="分支（可选，如 feat/g2-nim）" />
+        <input id="taskCommit" placeholder="commit（可选）" />
+        <input id="taskSummary" placeholder="上下文摘要（可选，减少重复读历史）" />
         <button id="taskCreate" class="small primary">创建任务</button>
       </div>
       <div id="tasks"></div>
@@ -887,8 +890,9 @@ function renderTasks() {
       const badge = document.createElement('span'); badge.className = 'badge ' + task.status; badge.textContent = taskStatusLabel(task.status);
       title.appendChild(badge); card.appendChild(title);
       const meta = document.createElement('div'); meta.className = 'bt-meta';
-      meta.textContent = (task.assignee ? '负责人 ' + task.assignee : '未分配') + (task.verifier ? ' · 验收 ' + task.verifier : '') + (task.createdBy ? ' · 由 ' + task.createdBy + ' 创建' : '');
+      meta.textContent = (task.assignee ? '负责人 ' + task.assignee : '未分配') + (task.verifier ? ' · 验收 ' + task.verifier : '') + (task.branch ? ' · ' + task.branch : '') + (task.commit ? ' @' + task.commit : '') + (task.createdBy ? ' · 由 ' + task.createdBy + ' 创建' : '');
       card.appendChild(meta);
+      if (task.summary) { const s = document.createElement('div'); s.className = 'bt-meta'; s.textContent = '摘要：' + task.summary; card.appendChild(s); }
       if (task.acceptance) { const a = document.createElement('div'); a.className = 'bt-accept'; a.textContent = '验收：' + task.acceptance; card.appendChild(a); }
       if (task.detail) { const d = document.createElement('div'); d.className = 'bt-meta'; d.textContent = task.detail; card.appendChild(d); }
       const actions = document.createElement('div'); actions.className = 'bt-actions';
@@ -1114,9 +1118,12 @@ $('taskCreate').onclick = async () => {
         acceptance: $('taskAcceptance').value,
         assignee: $('taskAssignee').value.trim() || undefined,
         verifier: $('taskVerifier').value.trim() || undefined,
+        branch: $('taskBranch').value.trim() || undefined,
+        commit: $('taskCommit').value.trim() || undefined,
+        summary: $('taskSummary').value.trim() || undefined,
       }),
     });
-    $('taskTitle').value = ''; $('taskDetail').value = ''; $('taskAcceptance').value = ''; $('taskAssignee').value = ''; $('taskVerifier').value = '';
+    $('taskTitle').value = ''; $('taskDetail').value = ''; $('taskAcceptance').value = ''; $('taskAssignee').value = ''; $('taskVerifier').value = ''; $('taskBranch').value = ''; $('taskCommit').value = ''; $('taskSummary').value = '';
     $('taskForm').classList.add('hidden');
     await selectRoom(state.room);
   } catch (error) { showError(error.message); }

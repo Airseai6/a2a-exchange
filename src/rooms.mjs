@@ -199,6 +199,9 @@ export class RoomService {
       status: 'open',
       assignee: pick(params, 'assignee') ? String(pick(params, 'assignee')) : null,
       verifier: pick(params, 'verifier') ? String(pick(params, 'verifier')) : null,
+      branch: pick(params, 'branch') ? String(pick(params, 'branch')).slice(0, 200) : null,
+      commit: pick(params, 'commit', 'commitRef', 'commit_ref') ? String(pick(params, 'commit', 'commitRef', 'commit_ref')).slice(0, 100) : null,
+      summary: pick(params, 'summary') ? String(pick(params, 'summary')).slice(0, 1000) : null,
       createdBy: actor,
       createdAt: nowIso(),
       updatedAt: nowIso(),
@@ -222,6 +225,12 @@ export class RoomService {
     const previousVerifier = task.verifier;
     const note = String(pick(params, 'note') ?? '').slice(0, 2000);
     if (action === 'assign') {
+      if (pick(params, 'assignee')) task.assignee = String(pick(params, 'assignee'));
+      if (pick(params, 'verifier')) task.verifier = String(pick(params, 'verifier'));
+    } else if (action === 'update') {
+      if (pick(params, 'branch')) task.branch = String(pick(params, 'branch')).slice(0, 200);
+      if (pick(params, 'commit', 'commitRef', 'commit_ref')) task.commit = String(pick(params, 'commit', 'commitRef', 'commit_ref')).slice(0, 100);
+      if (pick(params, 'summary')) task.summary = String(pick(params, 'summary')).slice(0, 1000);
       if (pick(params, 'assignee')) task.assignee = String(pick(params, 'assignee'));
       if (pick(params, 'verifier')) task.verifier = String(pick(params, 'verifier'));
     } else if (action === 'claim') {
@@ -259,18 +268,26 @@ export class RoomService {
     return { ...task, events: this.store.listRoomTaskEvents(task.taskId) };
   }
 
+  #taskContext(task) {
+    const bits = [];
+    if (task.branch) bits.push('分支 ' + task.branch);
+    if (task.commit) bits.push('commit ' + task.commit);
+    if (task.summary) bits.push('摘要 ' + task.summary);
+    return bits.length ? '\n' + bits.join(' · ') : '';
+  }
+
   #postTaskNotice(roomId, task, kind) {
     let target = null;
     let text = '';
     if (kind === 'created' && task.assignee) {
       target = task.assignee;
-      text = `@${target} 新任务：${task.title}${task.acceptance ? '\n验收：' + task.acceptance : ''}（taskId ${task.taskId}）`;
+      text = `@${target} 新任务：${task.title}${task.acceptance ? '\n验收：' + task.acceptance : ''}${this.#taskContext(task)}（taskId ${task.taskId}）`;
     } else if (kind === 'assigned' && task.assignee) {
       target = task.assignee;
-      text = `@${target} 任务已指派：${task.title}（taskId ${task.taskId}）`;
+      text = `@${target} 任务已指派：${task.title}${this.#taskContext(task)}（taskId ${task.taskId}）`;
     } else if (kind === 'resolved') {
       target = task.verifier ?? (task.createdBy && !['human', 'system'].includes(task.createdBy) ? task.createdBy : null);
-      if (target) text = `@${target} 任务待验收：${task.title}（taskId ${task.taskId}）`;
+      if (target) text = `@${target} 任务待验收：${task.title}${this.#taskContext(task)}（taskId ${task.taskId}）`;
     } else if (kind === 'verified' && task.assignee) {
       target = task.assignee;
       text = `@${target} 任务已验证通过：${task.title}（taskId ${task.taskId}）`;

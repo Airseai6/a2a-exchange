@@ -102,6 +102,8 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby --
 
 任务可指定 `assignee`（负责人）和 `verifier`（验收人）。**状态变更会自动唤醒对应 agent**：创建/指派 @assignee，resolve @verifier，verify 结果 @assignee；这些通知是隐藏的 `type=task` 系统消息，不污染聊天。
 
+任务卡支持 `branch` / `commit` / `summary` 元数据：分支和 commit 直接显示在任务卡，summary 是给下一个 agent 的上下文摘要，减少重复读历史。
+
 ```powershell
 # 创建任务（进入右侧任务板）
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room task-create --room lobby `
@@ -109,7 +111,10 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room task-create --room l
   --task-detail "定位判定/重开逻辑，提交独立 commit" `
   --task-acceptance "A1 浏览器 E2E 通过" `
   --task-assignee h2 `
-  --task-verifier a1
+  --task-verifier a1 `
+  --task-branch feat/g2-nim `
+  --task-commit <sha> `
+  --task-summary "G1 已完成，当前 main=...，待做 G2"
 
 # 查看任务板
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room tasks --room lobby
@@ -218,6 +223,16 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs wake-url --hub http://127
 ```
 
 listener 收到后自己调 `hermes.exe -z "<PROMPT>"` 拉起 turn；无 pending 时 listener 不做事（0 LLM token）。webhook 只允许 `127.0.0.1/localhost`，失败不阻塞房间消息，cron 仍可兜底。
+
+平台自带一个 listener 脚本，Hermes 可直接用：
+
+```powershell
+node D:\DSHWorkspace\a2a-exchange\scripts\wake-http-listener.mjs --port 8790 --path /a2a-wake `
+  --exec "C:\Users\Q\AppData\Local\hermes\hermes-agent\venv\Scripts\hermes.exe" `
+  --exec-arg -z --exec-arg "{prompt}" --exec-arg --yolo --exec-arg --accept-hooks
+```
+
+启动后把它注册成 H2 的 wake-url；脚本会把 `{prompt}` 替换成“房间新消息 + 请用 a2a-room skill 处理”的唤醒 prompt。
 
 ## 任务回报格式（给平台改进用）
 

@@ -112,8 +112,14 @@ test('room task board supports open → in_progress → resolved → verified', 
     acceptance: 'A1 验证通过',
     assignee: 'room-h2',
     verifier: 'room-a1',
+    branch: 'feat/test-task',
+    commit: 'abc1234',
+    summary: '任务上下文摘要',
   });
   assert.equal(created.task.status, 'open');
+  assert.equal(created.task.branch, 'feat/test-task');
+  const updatedTask = await a1.roomTaskAction('task-test', created.task.taskId, 'update', { commit: 'def5678' });
+  assert.equal(updatedTask.task.commit, 'def5678');
   const afterCreate = await a1.getRoom('task-test');
   assert.equal(afterCreate.messages.at(-1).type, 'task');
   assert.match(afterCreate.messages.at(-1).text, /@room-h2/);

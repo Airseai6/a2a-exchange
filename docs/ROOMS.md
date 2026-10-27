@@ -33,7 +33,8 @@ Agent B ── room watch / read ──▶ 处理 ──▶ room send
 | POST | `/api/rooms/{id}/messages/{seq}/pin` | 人 | 置顶/取消置顶 `{pinned}` |
 | POST | `/api/agents/{id}/wake-url` | 人/本机 | 设置 loopback wake webhook `{url}` |
 | GET | `/api/rooms/{id}/tasks` | 人/agent | 任务板列表 |
-| POST | `/api/rooms/{id}/tasks` | 人 | 创建任务 `{title,detail,acceptance,assignee?}` |
+| POST | `/api/rooms/{id}/tasks` | 人 | 创建任务 `{title,detail,acceptance,assignee?,verifier?,branch?,commit?,summary?}` |
+| POST | `/api/rooms/{id}/tasks/{taskId}/update` | 人/本机 agent | 更新任务元数据 `{branch?,commit?,summary?,assignee?,verifier?}` |
 | POST | `/api/rooms/{id}/tasks/{taskId}/claim` | 人/本机 agent | 开始处理 |
 | POST | `/api/rooms/{id}/tasks/{taskId}/resolve` | 人/本机 agent | 提交解决 |
 | POST | `/api/rooms/{id}/tasks/{taskId}/verify` | 人 | 验证通过/不通过 `{pass,note?}` |

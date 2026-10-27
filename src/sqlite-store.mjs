@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS room_tasks (
   status TEXT NOT NULL DEFAULT 'open',
   assignee TEXT,
   verifier TEXT,
+  branch TEXT,
+  commit_ref TEXT,
+  summary TEXT,
   created_by TEXT,
   created_at TEXT,
   updated_at TEXT,
@@ -278,12 +281,13 @@ export class SqliteStore {
   /* ── room task board ── */
   putRoomTask(task) {
     this.db.prepare(`
-      INSERT INTO room_tasks(task_id, room_id, title, detail, acceptance, status, assignee, verifier, created_by, created_at, updated_at, verified_by, verified_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO room_tasks(task_id, room_id, title, detail, acceptance, status, assignee, verifier, branch, commit_ref, summary, created_by, created_at, updated_at, verified_by, verified_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(task_id) DO UPDATE SET title=excluded.title, detail=excluded.detail, acceptance=excluded.acceptance,
-        status=excluded.status, assignee=excluded.assignee, verifier=excluded.verifier, updated_at=excluded.updated_at,
-        verified_by=excluded.verified_by, verified_at=excluded.verified_at
-    `).run(task.taskId, task.roomId, task.title, task.detail ?? '', task.acceptance ?? '', task.status, task.assignee ?? null, task.verifier ?? null, task.createdBy ?? null, task.createdAt ?? null, task.updatedAt ?? null, task.verifiedBy ?? null, task.verifiedAt ?? null);
+        status=excluded.status, assignee=excluded.assignee, verifier=excluded.verifier,
+        branch=excluded.branch, commit_ref=excluded.commit_ref, summary=excluded.summary,
+        updated_at=excluded.updated_at, verified_by=excluded.verified_by, verified_at=excluded.verified_at
+    `).run(task.taskId, task.roomId, task.title, task.detail ?? '', task.acceptance ?? '', task.status, task.assignee ?? null, task.verifier ?? null, task.branch ?? null, task.commit ?? null, task.summary ?? null, task.createdBy ?? null, task.createdAt ?? null, task.updatedAt ?? null, task.verifiedBy ?? null, task.verifiedAt ?? null);
     return task;
   }
 
@@ -382,6 +386,16 @@ export class SqliteStore {
     if (taskColumns.length > 0 && !taskColumns.some((c) => c.name === 'verifier')) {
       this.db.exec('ALTER TABLE room_tasks ADD COLUMN verifier TEXT');
     }
+    const taskColsNow = this.#tableInfo('room_tasks');
+    if (taskColsNow.length > 0 && !taskColsNow.some((c) => c.name === 'branch')) {
+      this.db.exec('ALTER TABLE room_tasks ADD COLUMN branch TEXT');
+    }
+    if (taskColsNow.length > 0 && !taskColsNow.some((c) => c.name === 'commit_ref')) {
+      this.db.exec('ALTER TABLE room_tasks ADD COLUMN commit_ref TEXT');
+    }
+    if (taskColsNow.length > 0 && !taskColsNow.some((c) => c.name === 'summary')) {
+      this.db.exec('ALTER TABLE room_tasks ADD COLUMN summary TEXT');
+    }
     const messageColumns = this.#tableInfo('room_messages');
     if (messageColumns.length > 0 && !messageColumns.some((c) => c.name === 'pinned')) {
       this.db.exec('ALTER TABLE room_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
@@ -456,6 +470,9 @@ function taskFromRow(row) {
     status: row.status,
     assignee: row.assignee ?? null,
     verifier: row.verifier ?? null,
+    branch: row.branch ?? null,
+    commit: row.commit_ref ?? null,
+    summary: row.summary ?? null,
     createdBy: row.created_by ?? null,
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,

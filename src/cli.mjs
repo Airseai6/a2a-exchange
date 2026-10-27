@@ -55,6 +55,9 @@ const options = {
   'task-acceptance': { type: 'string' },
   'task-assignee': { type: 'string' },
   'task-verifier': { type: 'string' },
+  'task-branch': { type: 'string' },
+  'task-commit': { type: 'string' },
+  'task-summary': { type: 'string' },
   'msg-type': { type: 'string' },
   action: { type: 'string' },
   note: { type: 'string' },
@@ -105,8 +108,8 @@ Room commands:
   room tasks --room <id>
   room activity --room <id> [--limit 50]
   room pin --room <id> --seq <n> [--unpin]
-  room task-create --room <id> --task-title "..." [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--task-verifier <agentId>]
-  room task-action --room <id> --task <taskId> --action claim|resolve|verify|reopen|close [--pass|--fail] [--note "..."]
+  room task-create --room <id> --task-title "..." [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--task-verifier <agentId>] [--task-branch <branch>] [--task-commit <sha>] [--task-summary "..."]
+  room task-action --room <id> --task <taskId> --action claim|resolve|verify|reopen|close|assign|update [--pass|--fail] [--note "..."] [--task-branch ...] [--task-commit ...]
   room watch --room <id> [--timeout 30] [--mentions]   (first new batch or timeout)
 
 Common options:
@@ -525,6 +528,9 @@ export async function main(argv = process.argv.slice(2)) {
               acceptance: opts['task-acceptance'],
               assignee: opts['task-assignee'],
               verifier: opts['task-verifier'],
+              branch: opts['task-branch'],
+              commit: opts['task-commit'],
+              summary: opts['task-summary'],
             }));
           } else {
             print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId, opts['msg-type'] || 'chat'));
@@ -543,12 +549,19 @@ export async function main(argv = process.argv.slice(2)) {
             acceptance: opts['task-acceptance'],
             assignee: opts['task-assignee'],
             verifier: opts['task-verifier'],
+            branch: opts['task-branch'],
+            commit: opts['task-commit'],
+            summary: opts['task-summary'],
           }));
         } else if (sub === 'task-action') {
           const action = requireOpt(opts, 'action');
           const extra = {
             ...(opts.note ? { note: opts.note } : {}),
             ...(opts['task-assignee'] ? { assignee: opts['task-assignee'] } : {}),
+            ...(opts['task-verifier'] ? { verifier: opts['task-verifier'] } : {}),
+            ...(opts['task-branch'] ? { branch: opts['task-branch'] } : {}),
+            ...(opts['task-commit'] ? { commit: opts['task-commit'] } : {}),
+            ...(opts['task-summary'] ? { summary: opts['task-summary'] } : {}),
             ...(action === 'verify' ? { pass: !opts.fail } : {}),
           };
           print(await client.roomTaskAction(roomId, requireOpt(opts, 'task'), action, extra));
