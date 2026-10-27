@@ -195,6 +195,7 @@ export class RoomService {
       acceptance: String(pick(params, 'acceptance') ?? '').slice(0, 2000),
       status: 'open',
       assignee: pick(params, 'assignee') ? String(pick(params, 'assignee')) : null,
+      verifier: pick(params, 'verifier') ? String(pick(params, 'verifier')) : null,
       createdBy: actor,
       createdAt: nowIso(),
       updatedAt: nowIso(),
@@ -204,6 +205,7 @@ export class RoomService {
     this.store.putRoomTask(task);
     this.store.appendRoomTaskEvent({ taskId: task.taskId, type: 'created', actor, note: title });
     this.#publish(roomId, { type: 'tasks', roomId, tasks: this.listTasks(roomId) });
+    this.#postTaskNotice(roomId, task, 'created');
     return { ...task, events: this.store.listRoomTaskEvents(task.taskId) };
   }
 
@@ -213,7 +215,10 @@ export class RoomService {
     if (!task || task.roomId !== roomId) throw new RpcError(-32004, 'Task not found', { a2aCode: 'TASK_NOT_FOUND' });
     const now = nowIso();
     const note = String(pick(params, 'note') ?? '').slice(0, 2000);
-    if (action === 'claim') {
+    if (action === 'assign') {
+      if (pick(params, 'assignee')) task.assignee = String(pick(params, 'assignee'));
+      if (pick(params, 'verifier')) task.verifier = String(pick(params, 'verifier'));
+    } else if (action === 'claim') {
       task.status = 'in_progress';
       task.assignee = pick(params, 'assignee') ? String(pick(params, 'assignee')) : (task.assignee ?? null);
     } else if (action === 'resolve') {
@@ -239,7 +244,38 @@ export class RoomService {
     this.store.putRoomTask(task);
     this.store.appendRoomTaskEvent({ taskId, type: action, actor, note });
     this.#publish(roomId, { type: 'tasks', roomId, tasks: this.listTasks(roomId) });
+    if (action === 'assign') this.#postTaskNotice(roomId, task, 'assigned');
+    if (action === 'resolve') this.#postTaskNotice(roomId, task, 'resolved');
+    if (action === 'verify') this.#postTaskNotice(roomId, task, task.status === 'verified' ? 'verified' : 'rejected');
+    if (action === 'reopen') this.#postTaskNotice(roomId, task, 'reopened');
     return { ...task, events: this.store.listRoomTaskEvents(task.taskId) };
+  }
+
+  #postTaskNotice(roomId, task, kind) {
+    let target = null;
+    let text = '';
+    if (kind === 'created' && task.assignee) {
+      target = task.assignee;
+      text = `@${target} 新任务：${task.title}${task.acceptance ? '\n验收：' + task.acceptance : ''}（taskId ${task.taskId}）`;
+    } else if (kind === 'assigned' && task.assignee) {
+      target = task.assignee;
+      text = `@${target} 任务已指派：${task.title}（taskId ${task.taskId}）`;
+    } else if (kind === 'resolved') {
+      target = task.verifier ?? (task.createdBy && !['human', 'system'].includes(task.createdBy) ? task.createdBy : null);
+      if (target) text = `@${target} 任务待验收：${task.title}（taskId ${task.taskId}）`;
+    } else if (kind === 'verified' && task.assignee) {
+      target = task.assignee;
+      text = `@${target} 任务已验证通过：${task.title}（taskId ${task.taskId}）`;
+    } else if (kind === 'rejected' && task.assignee) {
+      target = task.assignee;
+      text = `@${target} 任务验收未通过，请继续处理：${task.title}（taskId ${task.taskId}）`;
+    } else if (kind === 'reopened' && task.assignee) {
+      target = task.assignee;
+      text = `@${target} 任务已重新打开：${task.title}（taskId ${task.taskId}）`;
+    }
+    if (!target) return;
+    const room = this.#requireRoom(roomId);
+    this.#post(room, { kind: 'system', name: '任务板' }, text, 'task', task.taskId);
   }
 
   read(roomId, params = {}) {

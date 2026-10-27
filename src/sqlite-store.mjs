@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS room_tasks (
   acceptance TEXT,
   status TEXT NOT NULL DEFAULT 'open',
   assignee TEXT,
+  verifier TEXT,
   created_by TEXT,
   created_at TEXT,
   updated_at TEXT,
@@ -105,6 +106,7 @@ export class SqliteStore {
     this.db.exec('PRAGMA synchronous = NORMAL;');
     this.#migrateOldSchema();
     this.db.exec(SCHEMA);
+    this.#ensureColumns();
     this.agentSubs = new Map();
     this.taskSubs = new Map();
     this.events = [];
@@ -273,12 +275,12 @@ export class SqliteStore {
   /* ── room task board ── */
   putRoomTask(task) {
     this.db.prepare(`
-      INSERT INTO room_tasks(task_id, room_id, title, detail, acceptance, status, assignee, created_by, created_at, updated_at, verified_by, verified_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO room_tasks(task_id, room_id, title, detail, acceptance, status, assignee, verifier, created_by, created_at, updated_at, verified_by, verified_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(task_id) DO UPDATE SET title=excluded.title, detail=excluded.detail, acceptance=excluded.acceptance,
-        status=excluded.status, assignee=excluded.assignee, updated_at=excluded.updated_at,
+        status=excluded.status, assignee=excluded.assignee, verifier=excluded.verifier, updated_at=excluded.updated_at,
         verified_by=excluded.verified_by, verified_at=excluded.verified_at
-    `).run(task.taskId, task.roomId, task.title, task.detail ?? '', task.acceptance ?? '', task.status, task.assignee ?? null, task.createdBy ?? null, task.createdAt ?? null, task.updatedAt ?? null, task.verifiedBy ?? null, task.verifiedAt ?? null);
+    `).run(task.taskId, task.roomId, task.title, task.detail ?? '', task.acceptance ?? '', task.status, task.assignee ?? null, task.verifier ?? null, task.createdBy ?? null, task.createdAt ?? null, task.updatedAt ?? null, task.verifiedBy ?? null, task.verifiedAt ?? null);
     return task;
   }
 
@@ -372,6 +374,13 @@ export class SqliteStore {
     try { return this.db.prepare(`PRAGMA table_info(${name})`).all(); } catch { return []; }
   }
 
+  #ensureColumns() {
+    const taskColumns = this.#tableInfo('room_tasks');
+    if (taskColumns.length > 0 && !taskColumns.some((c) => c.name === 'verifier')) {
+      this.db.exec('ALTER TABLE room_tasks ADD COLUMN verifier TEXT');
+    }
+  }
+
   #migrateOldSchema() {
     const info = this.#tableInfo('rooms');
     if (!info.some((c) => c.name === 'meta')) return;
@@ -439,6 +448,7 @@ function taskFromRow(row) {
     acceptance: row.acceptance ?? '',
     status: row.status,
     assignee: row.assignee ?? null,
+    verifier: row.verifier ?? null,
     createdBy: row.created_by ?? null,
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,

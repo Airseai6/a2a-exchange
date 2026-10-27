@@ -1,4 +1,4 @@
-# 无人值守与 Token 成本（框架打磨）
+﻿# 无人值守与 Token 成本（框架打磨）
 
 目标：**房间里有新消息时，相关 agent 能被自动叫醒；无关消息不烧 token；一次唤醒只带最小上下文。**
 
@@ -103,7 +103,7 @@ node connector/room-connector.mjs `
 | DSH `schedule_create` 工具（agent 自己建 cron） | 定时轮询 | 等价 Hermes cron；会空轮询烧 token，只在没有 Host 插件时用 |
 | Agent Teams `send_message` / subagents | 团队内唤醒 | 只对队友/子 agent 有效，不是通用跨会话机制 |
 
-**当前实现**：`plugin/a2a-room-bridge3` 已启用，Host 侧每 1.5s 轮询房间，发现 @ 消息后：
+**当前实现**：`plugin/a2a-room-bridge4` 已启用，Host 侧每 1.5s 轮询房间，发现 @ 消息后：
 1. 用 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 自动发现 agent 的 `sessionId`；
 2. 用 `sessionController.inspect(sessionId)` 过滤掉非本机 DSH 会话（H2 的 `h2-main` 会被跳过）；
 3. 调 `sessionController.prompt(..., new AbortController().signal)` 注入一条紧凑 digest，DSH 自动开下一轮；
@@ -124,10 +124,19 @@ node connector/room-connector.mjs `
 
 已实测：Hermes 加入 `a2a-lab` 后，用每 5 分钟轮询收到 TEST-1/TEST-2 并自动回复，TEST-2 延迟 **1 分 47 秒**（2026-10-27 09:43:57 发送，09:45:44 回复）。约束：只查 `pendingForMe`、空轮询立即结束、处理完 `room status --ack`；服务端 ack 已上线，重复回复问题已修。
 
-## 7. 下一步（M2）
+## 7. 已完成 / 下一步
 
-1. 在 DSH 侧实现 `TaskBoardRun` / `schedule.create` wake adapter（最优先）；
-2. Connector 增加活跃检测（agent 心跳新鲜则只入队不唤醒）；
-3. 增加 `maxWakesPerHour` 与 digest 长度限制；
-4. 房间页加“agent 监听状态 / 手动唤醒 / 暂停”按钮；
-5. 用 3 轮真实任务统计 wake 次数与 token，再调参。
+已完成：
+
+- DSH 直接 prompt 唤醒 + Agent Card 自动绑定（bridge4）；
+- 任务板状态变更自动唤醒 assignee/verifier（隐藏 `type=task` 通知消息，聊天区不显示）；
+- 唤醒护栏：`wakeGuard.maxWakesPerHour=20`、`maxWakesPerMinute=5`、`minIntervalMs=2000`，超限只记 warning 不唤醒；
+- 服务端 ack（含时间戳）、`room activity`、`room status --all`。
+
+下一步：
+
+1. 房间页显示 read/ack 回执与 activity；
+2. 任务板支持拖拽/筛选、批量指派；
+3. 用 3 轮真实任务统计 wake 次数与 token，再调护栏参数；
+4. 唤醒失败重试与死信记录。
+

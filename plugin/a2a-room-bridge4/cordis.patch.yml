@@ -1,6 +1,6 @@
 - insert:
-    - id: a2a-room-bridge3
-      name: '@local/a2a-room-bridge3'
+    - id: a2a-room-bridge4
+      name: '@local/a2a-room-bridge4'
       config:
         hubUrl: http://127.0.0.1:8787
         roomId: fusion-data-academy
@@ -9,3 +9,7 @@
         autoBindIntervalMs: 15000
         autoBindExclude:
           - h2
+        wakeGuard:
+          maxWakesPerHour: 20
+          maxWakesPerMinute: 5
+          minIntervalMs: 2000

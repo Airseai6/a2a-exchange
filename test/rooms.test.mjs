@@ -100,12 +100,19 @@ test('room task board supports open → in_progress → resolved → verified', 
     detail: '验证任务看板生命周期',
     acceptance: 'A1 验证通过',
     assignee: 'room-h2',
+    verifier: 'room-a1',
   });
   assert.equal(created.task.status, 'open');
+  const afterCreate = await a1.getRoom('task-test');
+  assert.equal(afterCreate.messages.at(-1).type, 'task');
+  assert.match(afterCreate.messages.at(-1).text, /@room-h2/);
   const claimed = await h2.roomTaskAction('task-test', created.task.taskId, 'claim', { assignee: 'room-h2' });
   assert.equal(claimed.task.status, 'in_progress');
   const resolved = await h2.roomTaskAction('task-test', created.task.taskId, 'resolve', { note: '已实现' });
   assert.equal(resolved.task.status, 'resolved');
+  const afterResolve = await a1.getRoom('task-test');
+  assert.equal(afterResolve.messages.at(-1).type, 'task');
+  assert.match(afterResolve.messages.at(-1).text, /@room-a1/);
   const verified = await a1.roomTaskAction('task-test', created.task.taskId, 'verify', { pass: true, note: 'E2E 通过' });
   assert.equal(verified.task.status, 'verified');
   const board = await a1.listRoomTasks('task-test');

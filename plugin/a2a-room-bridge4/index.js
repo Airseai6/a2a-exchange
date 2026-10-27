@@ -1,4 +1,4 @@
-// A2A Exchange room bridge (Host-only DSH plugin).
+﻿// A2A Exchange room bridge (Host-only DSH plugin).
 //
 // Watches one A2A Exchange room and injects a compact prompt into mapped DSH
 // sessions when a message mentions their agent. No LLM work happens here; this
@@ -60,6 +60,22 @@ export function apply(ctx, config = {}) {
   const autoBind = config.autoBind !== false;
   const autoBindIntervalMs = Math.max(5000, Number(config.autoBindIntervalMs ?? 15000));
   const autoBindExclude = new Set(Array.isArray(config.autoBindExclude) ? config.autoBindExclude : ['h2']);
+  const guardConfig = config.wakeGuard ?? {};
+  const maxWakesPerHour = Math.max(1, Number(guardConfig.maxWakesPerHour ?? 20));
+  const maxWakesPerMinute = Math.max(1, Number(guardConfig.maxWakesPerMinute ?? 5));
+  const minIntervalMs = Math.max(0, Number(guardConfig.minIntervalMs ?? 2000));
+  const wakeHistory = new Map();
+  function guardWake(agentId) {
+    const now = Date.now();
+    const history = (wakeHistory.get(agentId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
+    const last = history.at(-1) ?? 0;
+    if (now - last < minIntervalMs) return 'min_interval';
+    if (history.filter((t) => now - t < 60 * 1000).length >= maxWakesPerMinute) return 'minute_cap';
+    if (history.length >= maxWakesPerHour) return 'hour_cap';
+    history.push(now);
+    wakeHistory.set(agentId, history);
+    return null;
+  }
   let dynamicBindings = [];
   function effectiveBindings() {
     const merged = new Map();
@@ -93,9 +109,9 @@ export function apply(ctx, config = {}) {
       }
       dynamicBindings = next;
       const names = effectiveBindings().map((b) => `${b.agentId}=${b.sessionId}`).join(',');
-      console.log(`[a2a-room-bridge3] auto-bind ${names || '(none)'}`);
+      console.log(`[a2a-room-bridge4] auto-bind ${names || '(none)'}`);
     } catch (error) {
-      console.error('[a2a-room-bridge3] auto-bind failed:', error?.message);
+      console.error('[a2a-room-bridge4] auto-bind failed:', error?.message);
     }
   }
   const stateFile = String(config.stateFile ?? path.join(process.env.DSH_HOME ?? os.homedir(), 'a2a-room-bridge-state.json'));
@@ -142,6 +158,11 @@ export function apply(ctx, config = {}) {
           '',
           '请只处理与你相关的部分；处理后用 room send 回复 @对方；无关则一句话说明。',
         ].join('\n');
+        const blocked = guardWake(binding.agentId);
+        if (blocked) {
+          console.warn(`[a2a-room-bridge4] wake suppressed ${binding.agentId}: ${blocked}`);
+          continue;
+        }
         try {
           // Prefer a direct queue prompt: schedule.create's delivery path also
           // goes through sessionController.prompt, but currently passes no
@@ -157,18 +178,18 @@ export function apply(ctx, config = {}) {
             },
             new AbortController().signal,
           );
-          console.log(`[a2a-room-bridge] prompted wake ${binding.agentId} seq=${batch.at(-1).seq}`);
+          console.log(`[a2a-room-bridge4] prompted wake ${binding.agentId} seq=${batch.at(-1).seq}`);
         } catch (promptError) {
-          console.error(`[a2a-room-bridge] prompt wake failed for ${binding.agentId}:`, promptError?.message);
+          console.error(`[a2a-room-bridge4] prompt wake failed for ${binding.agentId}:`, promptError?.message);
           try {
             await ctx.schedule.create(binding.sessionId, {
               title: `A2A 房间 ${roomId} 唤醒`,
               prompt,
               after_seconds: 1,
             });
-            console.log(`[a2a-room-bridge] scheduled wake ${binding.agentId} seq=${batch.at(-1).seq}`);
+            console.log(`[a2a-room-bridge4] scheduled wake ${binding.agentId} seq=${batch.at(-1).seq}`);
           } catch (error) {
-            console.error(`[a2a-room-bridge] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
+            console.error(`[a2a-room-bridge4] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
           }
         }
       }
@@ -195,5 +216,6 @@ export function apply(ctx, config = {}) {
     clearInterval(timer);
     clearInterval(bindTimer);
   });
-  console.log(`[a2a-room-bridge3] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
+  console.log(`[a2a-room-bridge4] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
 }
+

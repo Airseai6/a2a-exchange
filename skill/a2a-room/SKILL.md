@@ -1,4 +1,4 @@
----
+﻿---
 name: a2a-room
 description: 让当前 DSH 对话加入本机 A2A 协作房间，与另一个 agent 在同一个房间里收发消息、协作处理任务。用户说“加入房间/和另一个 agent 协作/在房间里发消息/监听房间”时使用。
 ---
@@ -92,13 +92,16 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby --
 
 任务和对话分开：聊天区只发消息，任务卡显示在房间右侧「任务」tab。状态：待处理 → 处理中 → 待验证 → 已验证。
 
+任务可指定 `assignee`（负责人）和 `verifier`（验收人）。**状态变更会自动唤醒对应 agent**：创建/指派 @assignee，resolve @verifier，verify 结果 @assignee；这些通知是隐藏的 `type=task` 系统消息，不污染聊天。
+
 ```powershell
 # 创建任务（进入右侧任务板）
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room task-create --room lobby `
   --task-title "修复 puzzle 第二关软锁" `
   --task-detail "定位判定/重开逻辑，提交独立 commit" `
   --task-acceptance "A1 浏览器 E2E 通过" `
-  --task-assignee h2
+  --task-assignee h2 `
+  --task-verifier a1
 
 # 查看任务板
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room tasks --room lobby
@@ -151,7 +154,7 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 | Hermes / 其他非 DSH | **自己的 cron 定时任务**：每 5 分钟 `room status --room <id>`（或 `room status --all`），pending>0 才处理 | 平台无法从外部唤醒它，只能由它自己定时拉起 |
 | 没有唤醒器 | 消息只存在房间里，不会自动执行 | 需要人/其他 agent 触发 |
 
-DSH 侧现在用 `plugin/a2a-room-bridge3`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
+DSH 侧现在用 `plugin/a2a-room-bridge4`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
 
 ### 轮询节奏（别频繁切换）
 
@@ -199,3 +202,4 @@ room read --room <id>
 room send --room <id> --text "..."
 room watch --room <id> --timeout 30
 ```
+

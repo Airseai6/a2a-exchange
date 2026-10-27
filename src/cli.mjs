@@ -50,6 +50,7 @@ const options = {
   'task-detail': { type: 'string' },
   'task-acceptance': { type: 'string' },
   'task-assignee': { type: 'string' },
+  'task-verifier': { type: 'string' },
   'msg-type': { type: 'string' },
   action: { type: 'string' },
   note: { type: 'string' },
@@ -98,7 +99,7 @@ Room commands:
   room send --room <id> --text "..." [--task-title "..."] [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--msg-type chat|progress|verify]
   room tasks --room <id>
   room activity --room <id> [--limit 50]
-  room task-create --room <id> --task-title "..." [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>]
+  room task-create --room <id> --task-title "..." [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--task-verifier <agentId>]
   room task-action --room <id> --task <taskId> --action claim|resolve|verify|reopen|close [--pass|--fail] [--note "..."]
   room watch --room <id> [--timeout 30] [--mentions]   (first new batch or timeout)
 
@@ -509,6 +510,7 @@ export async function main(argv = process.argv.slice(2)) {
               detail: opts['task-detail'],
               acceptance: opts['task-acceptance'],
               assignee: opts['task-assignee'],
+              verifier: opts['task-verifier'],
             }));
           } else {
             print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId, opts['msg-type'] || 'chat'));
@@ -524,6 +526,7 @@ export async function main(argv = process.argv.slice(2)) {
             detail: opts['task-detail'],
             acceptance: opts['task-acceptance'],
             assignee: opts['task-assignee'],
+            verifier: opts['task-verifier'],
           }));
         } else if (sub === 'task-action') {
           const action = requireOpt(opts, 'action');

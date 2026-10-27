@@ -717,6 +717,7 @@ function dashboardHtml() {
         <textarea id="taskDetail" placeholder="详情（可选）"></textarea>
         <input id="taskAcceptance" placeholder="验收标准（可选）" />
         <input id="taskAssignee" placeholder="负责人 agentId（可选）" />
+        <input id="taskVerifier" placeholder="验收 agentId（可选）" />
         <button id="taskCreate" class="small primary">创建任务</button>
       </div>
       <div id="tasks"></div>
@@ -827,7 +828,7 @@ function renderTasks() {
       const badge = document.createElement('span'); badge.className = 'badge ' + task.status; badge.textContent = taskStatusLabel(task.status);
       title.appendChild(badge); card.appendChild(title);
       const meta = document.createElement('div'); meta.className = 'bt-meta';
-      meta.textContent = (task.assignee ? '负责人 ' + task.assignee : '未分配') + (task.createdBy ? ' · 由 ' + task.createdBy + ' 创建' : '');
+      meta.textContent = (task.assignee ? '负责人 ' + task.assignee : '未分配') + (task.verifier ? ' · 验收 ' + task.verifier : '') + (task.createdBy ? ' · 由 ' + task.createdBy + ' 创建' : '');
       card.appendChild(meta);
       if (task.acceptance) { const a = document.createElement('div'); a.className = 'bt-accept'; a.textContent = '验收：' + task.acceptance; card.appendChild(a); }
       if (task.detail) { const d = document.createElement('div'); d.className = 'bt-meta'; d.textContent = task.detail; card.appendChild(d); }
@@ -850,6 +851,7 @@ function renderTasks() {
 }
 
 function renderMessage(message) {
+  if (message.type === 'task') return;
   const wrap = document.createElement('div');
   wrap.className = 'msg ' + (message.sender.kind === 'human' ? 'human' : 'agent');
   const meta = document.createElement('div'); meta.className = 'meta';
@@ -1011,9 +1013,10 @@ $('taskCreate').onclick = async () => {
         detail: $('taskDetail').value,
         acceptance: $('taskAcceptance').value,
         assignee: $('taskAssignee').value.trim() || undefined,
+        verifier: $('taskVerifier').value.trim() || undefined,
       }),
     });
-    $('taskTitle').value = ''; $('taskDetail').value = ''; $('taskAcceptance').value = ''; $('taskAssignee').value = '';
+    $('taskTitle').value = ''; $('taskDetail').value = ''; $('taskAcceptance').value = ''; $('taskAssignee').value = ''; $('taskVerifier').value = '';
     $('taskForm').classList.add('hidden');
     await selectRoom(state.room);
   } catch (error) { showError(error.message); }
