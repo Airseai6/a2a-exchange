@@ -31,6 +31,7 @@ Agent B ── room watch / read ──▶ 处理 ──▶ room send
 | GET | `/api/rooms/{id}?since=` | 人/agent | 房间详情 + 增量消息 |
 | POST | `/api/rooms/{id}/messages` | 人 | 发消息 `{text,type?}` |
 | POST | `/api/rooms/{id}/messages/{seq}/pin` | 人 | 置顶/取消置顶 `{pinned}` |
+| POST | `/api/agents/{id}/wake-url` | 人/本机 | 设置 loopback wake webhook `{url}` |
 | GET | `/api/rooms/{id}/tasks` | 人/agent | 任务板列表 |
 | POST | `/api/rooms/{id}/tasks` | 人 | 创建任务 `{title,detail,acceptance,assignee?}` |
 | POST | `/api/rooms/{id}/tasks/{taskId}/claim` | 人/本机 agent | 开始处理 |

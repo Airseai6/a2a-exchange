@@ -9,6 +9,22 @@ import {
 import { newToken, RpcError, sha256, safeEqual, uuid, pick, compact } from './util.mjs';
 
 const AGENT_ID_RE = /^[a-z0-9][a-z0-9._-]{1,63}$/;
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+function normalizeWakeUrl(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return undefined;
+  let url;
+  try { url = new URL(String(value)); } catch {
+    throw new RpcError(-32602, 'wakeUrl must be a valid URL', { a2aCode: 'INVALID_ARGUMENT' });
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new RpcError(-32602, 'wakeUrl must use http/https', { a2aCode: 'INVALID_ARGUMENT' });
+  }
+  if (!LOOPBACK_HOSTS.has(url.hostname)) {
+    throw new RpcError(-32602, 'wakeUrl must point to loopback/localhost', { a2aCode: 'INVALID_ARGUMENT' });
+  }
+  return url.toString();
+}
 
 export class Registry {
   constructor(store, options = {}) {
@@ -71,12 +87,14 @@ export class Registry {
     });
     const token = newToken('agent');
     const existing = this.store.getAgent(agentId);
+    const wakeUrl = normalizeWakeUrl(pick(params, 'wakeUrl', 'wake_url')) ?? existing?.wakeUrl;
     const agent = compact({
       agentId,
       tokenHash: sha256(token),
       card,
       sessionId: pick(params, 'sessionId', 'session_id'),
       workspace: pick(params, 'workspace'),
+      wakeUrl,
       wakePolicy,
       heartbeatTtlSeconds,
       syncWaitMs,
@@ -92,8 +110,14 @@ export class Registry {
     return { agentId, token, card };
   }
 
-  heartbeat(params = {}, authenticatedAgentId = null) {
-    const agentId = authenticatedAgentId ?? pick(params, 'agentId', 'agent_id');
+  setWakeUrl(agentId, value) {
+    const agent = this.requireAgent(agentId);
+    agent.wakeUrl = normalizeWakeUrl(value);
+    this.store.putAgent(agent);
+    return { ok: true, agentId, wakeUrl: agent.wakeUrl ?? null };
+  }
+
+  heartbeat(params = {}, authenticatedAgentId = null) {    const agentId = authenticatedAgentId ?? pick(params, 'agentId', 'agent_id');
     if (!agentId) throw new RpcError(-32602, 'agentId is required', { a2aCode: 'INVALID_ARGUMENT' });
     const agent = this.requireAgent(agentId);
     agent.lastSeen = new Date().toISOString();

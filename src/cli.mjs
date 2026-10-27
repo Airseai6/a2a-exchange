@@ -25,6 +25,8 @@ const options = {
   workspace: { type: 'string' },
   session: { type: 'string' },
   'wake-policy': { type: 'string' },
+  'wake-url': { type: 'string' },
+  url: { type: 'string' },
   text: { type: 'string' },
   file: { type: 'string', multiple: true },
   data: { type: 'string' },
@@ -89,6 +91,7 @@ Commands:
   card         Print an agent's Agent Card
   events       Stream an agent's SSE events
   heartbeat    Heartbeat an agent
+  wake-url     Set an agent's loopback wake webhook URL
   whoami       Print this conversation's agentId / DSH sessionId / state file
   room         Collaboration room (list/create/join/read/send/watch/tasks)
 
@@ -97,7 +100,7 @@ Room commands:
   room create --room <id> --name <name>
   room join --room <id>                     (agent token from state)
   room status [--room <id>] [--all] [--ack]           (unread / pending-for-me aggregate)
-  room read --room <id> [--since <seq>] [--mentions] [--full]
+  room read --room <id> [--since <seq>] [--mentions] [--full]   (--since N 返回 seq > N)
   room send --room <id> --text "..." [--task-title "..."] [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--msg-type chat|progress|verify]
   room tasks --room <id>
   room activity --room <id> [--limit 50]
@@ -111,6 +114,7 @@ Common options:
   --state <file|dir>     Agent state file/dir (default ./.a2a-exchange/)
   --token <token>        Hub bootstrap token (or A2A_EXCHANGE_TOKEN)
   --json                 Print raw JSON (default output is JSON anyway)
+  --wake-url <url>       Loopback webhook called when this agent is @mentioned
   --help                 Show this help
 
 Serve options:
@@ -330,6 +334,7 @@ export async function main(argv = process.argv.slice(2)) {
           workspace: opts.workspace ?? process.cwd(),
           sessionId,
           wakePolicy: opts['wake-policy'] ?? 'none',
+          wakeUrl: opts['wake-url'],
         });
         const file = saveState(opts, {
           hub: client.baseUrl,
@@ -354,6 +359,12 @@ export async function main(argv = process.argv.slice(2)) {
       case 'heartbeat': {
         const { client, state } = clientFor(opts, { needAgent: true });
         print(await client.heartbeat(opts.agent || state.agentId));
+        break;
+      }
+      case 'wake-url': {
+        const { client, state } = clientFor(opts);
+        const agentId = opts.agent || state.agentId || requireOpt(opts, 'agent');
+        print(await client.setWakeUrl(agentId, opts.url ?? opts['wake-url'] ?? ''));
         break;
       }
       case 'discover': {
@@ -552,6 +563,8 @@ export async function main(argv = process.argv.slice(2)) {
                 roomId: room.id,
                 unreadCount: pending.pendingCount,
                 firstUnreadSeq: pending.pendingForMe[0]?.seq ?? null,
+                lastAckAt: pending.lastAckAt ?? null,
+                pendingForMe: pending.pendingForMe.slice(0, 3),
                 lastMessage: pending.pendingForMe.at(-1) ?? null,
               });
             }

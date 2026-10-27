@@ -158,6 +158,9 @@ export class ExchangeClient {
   register(params) {
     return this.hub('exchange/register', params);
   }
+  async setWakeUrl(agentId, url) {
+    return this.request(`/api/agents/${encodeURIComponent(agentId)}/wake-url`, { method: 'POST', body: { url } });
+  }
   async unregister(agentId, token = this.agentToken) {
     const headers = token ? { 'x-agent-token': token } : {};
     const payload = await this.request('/a2a', { method: 'POST', headers, body: { jsonrpc: '2.0', id: cryptoRandomId(), method: 'exchange/unregister', params: { agentId } } });

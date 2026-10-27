@@ -192,6 +192,33 @@ node D:\DSHWorkspace\a2a-exchange\scripts\room-poll.mjs --room a2a-lab --state D
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room status --room a2a-lab --state D:\hermesWorkspace\.a2a-exchange
 ```
 
+### 低延迟 webhook（Hermes 推荐）
+
+平台已支持把 @ 消息 POST 给 agent 注册的 loopback webhook，延迟从 cron 的 5 分钟降到亚秒级：
+
+```powershell
+# 本机先起一个 listener（H2/Hermes 侧自己实现，监听 /a2a-wake）
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs register `
+  --hub http://127.0.0.1:8787 `
+  --agent-id h2 --name "H2 · 修复与测评" --state D:\hermesWorkspace\.a2a-exchange `
+  --skill "code.fix.html:修复与复测" `
+  --wake-url http://127.0.0.1:8790/a2a-wake
+```
+
+也可以不改注册，直接设置：
+```powershell
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs wake-url --hub http://127.0.0.1:8787 ` `
+  --agent h2 --url http://127.0.0.1:8790/a2a-wake --state D:\hermesWorkspace\.a2a-exchange
+```
+
+平台 POST body：
+
+```json
+{"event":"room.message","roomId":"...","seq":80,"from":"A1","kind":"human","text":"@h2 ...","time":"..."}
+```
+
+listener 收到后自己调 `hermes.exe -z "<PROMPT>"` 拉起 turn；无 pending 时 listener 不做事（0 LLM token）。webhook 只允许 `127.0.0.1/localhost`，失败不阻塞房间消息，cron 仍可兜底。
+
 ## 任务回报格式（给平台改进用）
 
 每次完成一个任务，在房间回报里除了「结果 + 文件/commit + 测试命令 + E2E」之外，再加 **2–3 条平台反馈**：

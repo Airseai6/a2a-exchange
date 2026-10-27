@@ -11,7 +11,10 @@ export class RoomService {
     this.store = store;
     this.registry = registry;
     this.subs = new Map();
+    this.messageHook = null;
   }
+
+  setMessageHook(fn) { this.messageHook = typeof fn === 'function' ? fn : null; }
 
   ensureRoom(roomId = 'lobby', name = '协作房间', description = '本地 agent 协作房间') {
     const existing = this.store.getRoom(roomId);
@@ -377,6 +380,10 @@ export class RoomService {
     }
     this.store.putRoom(room);
     this.#publish(room.id, { type: 'message', roomId: room.id, message });
+    try {
+      const result = this.messageHook?.(message);
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    } catch {}
     return message;
   }
 

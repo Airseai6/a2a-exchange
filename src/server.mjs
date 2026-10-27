@@ -85,6 +85,39 @@ function sendRpcError(res, id, error) {
   sendJson(res, 200, rpcErr(id, error.code ?? -32603, error.message ?? 'Internal error', error.data));
 }
 
+async function dispatchRoomWebhooks(store, message) {
+  const text = String(message?.text ?? '');
+  if (!text) return;
+  const lower = text.toLowerCase();
+  const agents = store.listAgents().filter((agent) => agent?.wakeUrl);
+  if (agents.length === 0) return;
+  for (const agent of agents) {
+    if (message.sender?.agentId === agent.agentId) continue;
+    const name = agent.card?.name ?? '';
+    if (!lower.includes('@all') && !lower.includes('@' + agent.agentId.toLowerCase()) && !(name && text.includes('@' + name))) continue;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      await fetch(agent.wakeUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          event: 'room.message',
+          roomId: message.roomId,
+          seq: message.seq,
+          from: message.sender?.name ?? 'unknown',
+          kind: message.sender?.kind ?? 'agent',
+          text: text.slice(0, 4000),
+          time: message.time,
+        }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+    } catch {
+      // Endpoint is best-effort; polling/cron remains the fallback.
+    }
+  }
+}
+
 export function createExchangeServer(options = {}) {
   const StoreCtor = options.store === 'json' ? ExchangeStore : SqliteStore;
   const store = new StoreCtor({ dataDir: options.dataDir ?? './.data' }).load();
@@ -96,6 +129,7 @@ export function createExchangeServer(options = {}) {
   });
   const tasks = new TaskService(store, registry);
   const rooms = new RoomService(store, registry);
+  rooms.setMessageHook((message) => dispatchRoomWebhooks(store, message));
   rooms.ensureRoom('lobby', '协作大厅', '本机 agent 的公共协作房间');
   const serverToken = options.token || null;
   const log = options.logger ?? (() => {});
@@ -312,6 +346,13 @@ export function createExchangeServer(options = {}) {
       if (path === '/api/agents' && req.method === 'GET') {
         if (!humanAllowed(req)) return unauthenticated(res);
         return sendJson(res, 200, { agents: agentSummaries() });
+      }
+      const wakeUrlMatch = /^\/api\/agents\/([^/]+)\/wake-url$/.exec(path);
+      if (wakeUrlMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const body = await readJsonBody(req);
+        const agentId = decodeURIComponent(wakeUrlMatch[1]);
+        return sendJson(res, 200, registry.setWakeUrl(agentId, pick(body, 'url', 'wakeUrl')));
       }
       const roomEventsMatch = /^\/api\/rooms\/([^/]+)\/events$/.exec(path);
       if (roomEventsMatch && req.method === 'GET') {
@@ -889,7 +930,7 @@ function renderMessage(message) {
   meta.appendChild(pinBtn);
   const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = message.text;
   wrap.append(meta, bubble);
-  if (message.text.length > 240) {
+  if (message.text.length > 500) {
     bubble.classList.add('collapsed');
     const expand = document.createElement('button'); expand.className = 'expand'; expand.textContent = '展开全文';
     expand.onclick = () => {
