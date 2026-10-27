@@ -39,7 +39,7 @@ test('agent SSE feed emits task.created and replays by Last-Event-ID', async () 
   const replay = [];
   const controller2 = new AbortController();
   const feed2 = provider.streamAgentEvents('provider', (event) => replay.push(event), { signal: controller2.signal, lastEventId: 0 }).catch(() => {});
-  await waitFor(() => replay.length > 0, { message: 'replayed events' });
+  await waitFor(() => replay.some((e) => e.event === 'task.created'), { message: 'replayed task.created' });
   controller2.abort();
   await feed2;
   assert.ok(replay.some((e) => e.event === 'task.created'));

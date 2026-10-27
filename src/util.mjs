@@ -38,12 +38,44 @@ export function ensureDir(dir) {
   return dir;
 }
 
-/** Atomic write: write to a temp file then rename. */
-export function writeFileAtomic(file, data) {
+/** Synchronous sleep for retry loops (no timers needed). */
+function sleepSync(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // busy-wait; only used for rare Windows EPERM rename retries
+  }
+}
+
+/**
+ * Atomic write: write to a temp file then rename.
+ * Windows occasionally returns EPERM/EBUSY on rename (antivirus scanning the
+ * temp file); retry briefly and fall back to copying.
+ */
+export function writeFileAtomic(file, data, { retries = 10 } = {}) {
   ensureDir(path.dirname(file));
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tmp, data);
-  fs.renameSync(tmp, file);
+  let lastError;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) break;
+      sleepSync(Math.min(5 + attempt * 5, 40));
+    }
+  }
+  try {
+    fs.copyFileSync(tmp, file);
+    fs.unlinkSync(tmp);
+    return;
+  } catch (error) {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {}
+    throw lastError ?? error;
+  }
 }
 
 export function readJson(file, fallback = undefined) {
