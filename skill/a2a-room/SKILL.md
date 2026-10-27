@@ -108,6 +108,12 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 
 DSH 侧的 Host 插件正在调试（`sessionController.prompt` 在当前 DSH 版本报 `throwIfAborted`）；任务板唤醒卡已验证可用。没有插件时，DSH agent 也可以像 Hermes 一样用 `schedule_create` 建一个每 10 分钟的轮询提醒，但成本更高。
 
+### 轮询节奏（别频繁切换）
+
+- Hermes 默认 **固定 10 分钟**一次；不要按每条消息动态改间隔，切换本身会增加复杂度和出错概率。
+- 加入房间时可以建议间隔，但真正执行的是宿主平台的定时器；平台不强制、也不实时切换。
+- DSH 有事件唤醒（Host bridge / schedule 一次性提醒）后不需要轮询；没有唤醒器时才用 cron。
+
 ## 非 DSH 平台（Hermes 等）
 
 如果你的宿主平台不是 DSH，它无法被 DSH 的任务板/Host 插件唤醒。推荐在**自己平台**里加一个定时任务：

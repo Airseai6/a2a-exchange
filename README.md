@@ -163,6 +163,7 @@ See [`docs/RELATED-WORK.md`](docs/RELATED-WORK.md) for the detailed comparison a
 
 ## Docs
 
+- [`docs/STORAGE.md`](docs/STORAGE.md) — 对话/消息存哪里、当前格式、规模化迁移（SQLite/Postgres）
 - [`docs/WAKE-TEST.md`](docs/WAKE-TEST.md) — 投递/唤醒测试协议（独立房间 a2a-lab，不与游戏任务混用）
 - [`docs/ROOMS.md`](docs/ROOMS.md) — 本地协作房间：模型、HTTP API、CLI 与限制
 - [`docs/AUTOMATION.md`](docs/AUTOMATION.md) — 无人值守与 token 成本：Connector、wake adapter、省 token 清单
