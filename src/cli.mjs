@@ -43,6 +43,7 @@ const options = {
   limit: { type: 'string' },
   mentions: { type: 'boolean' },
   full: { type: 'boolean' },
+  ack: { type: 'boolean' },
   'data-dir': { type: 'string' },
   host: { type: 'string' },
   port: { type: 'string' },
@@ -81,6 +82,7 @@ Room commands:
   room list
   room create --room <id> --name <name>
   room join --room <id>                     (agent token from state)
+  room status --room <id> [--ack]           (unread / pending-for-me aggregate)
   room read --room <id> [--since <seq>] [--mentions] [--full]
   room send --room <id> --text "..."
   room watch --room <id> [--timeout 30] [--mentions]   (first new batch or timeout)
@@ -163,8 +165,18 @@ function roomView(data, { agentId, agentName, mentionsOnly = false, full = false
     roomId: data.roomId,
     messages: full ? matched : matched.map(compactRoomMessage),
     lastSeq: data.lastSeq,
+    unreadCount: all.length,
+    firstUnreadSeq: all[0]?.seq ?? null,
     skipped: all.length - matched.length,
   };
+}
+
+function isMentionedFor(message, agentId, agentName) {
+  const text = String(message.text ?? '');
+  const lower = text.toLowerCase();
+  return lower.includes('@all') ||
+    lower.includes('@' + String(agentId ?? '').toLowerCase()) ||
+    (agentName ? text.includes('@' + agentName) : false);
 }
 
 function clientFor(opts, { needAgent = false } = {}) {
@@ -468,10 +480,29 @@ export async function main(argv = process.argv.slice(2)) {
         const agentId = opts.agent || state.agentId;
         const agentName = state.card?.name;
         const viewOpts = { agentId, agentName, mentionsOnly: Boolean(opts.mentions), full: Boolean(opts.full) };
+        // Any room activity also refreshes presence (avoids stale "offline").
+        try { await client.heartbeat(agentId); } catch {}
         if (sub === 'join') {
           print(await client.joinRoom(roomId, agentId));
         } else if (sub === 'send') {
           print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId));
+        } else if (sub === 'status') {
+          const seen = state.roomSeen?.[roomId] ?? 0;
+          const data = await client.readRoom(roomId, seen);
+          const pending = data.messages
+            .filter((message) => isMentionedFor(message, agentId, agentName))
+            .map(compactRoomMessage);
+          print({
+            roomId,
+            agentId,
+            lastSeq: data.lastSeq,
+            unreadCount: data.messages.length,
+            firstUnreadSeq: data.messages[0]?.seq ?? null,
+            pendingForMe: pending.slice(-5),
+            pendingCount: pending.length,
+            lastMessage: data.messages.length ? compactRoomMessage(data.messages.at(-1)) : null,
+          });
+          if (opts.ack) saveRoomSeen(opts, roomId, data.lastSeq);
         } else if (sub === 'read') {
           const since = opts.since !== undefined ? Number(opts.since) : (state.roomSeen?.[roomId] ?? 0);
           const data = await client.readRoom(roomId, since);

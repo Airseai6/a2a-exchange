@@ -512,6 +512,8 @@ function dashboardHtml() {
   .msg.agent { align-self:flex-start; align-items:flex-start; }
   .meta { font-size:11px; color:var(--muted); }
   .bubble { padding:10px 13px; border-radius:12px; line-height:1.55; font-size:14px; white-space:pre-wrap; word-break:break-word; border:1px solid var(--line); }
+  .bubble.collapsed { max-height:120px; overflow:hidden; }
+  button.expand { align-self:flex-start; margin-top:4px; background:transparent; color:var(--accent); border:0; font-size:12px; cursor:pointer; padding:0; }
   .msg.human .bubble { background:var(--human); border-color:#4a5f8d; }
   .msg.agent .bubble { background:var(--agent); }
   .composer { border-top:1px solid var(--line); padding:12px 20px; display:flex; gap:10px; align-items:flex-end; }
@@ -611,7 +613,17 @@ function renderMessage(message) {
   const meta = document.createElement('div'); meta.className = 'meta';
   meta.textContent = message.sender.name + ' · ' + new Date(message.time).toLocaleTimeString();
   const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = message.text;
-  wrap.append(meta, bubble); $('messages').appendChild(wrap);
+  wrap.append(meta, bubble);
+  if (message.text.length > 240) {
+    bubble.classList.add('collapsed');
+    const expand = document.createElement('button'); expand.className = 'expand'; expand.textContent = '展开全文';
+    expand.onclick = () => {
+      const collapsed = bubble.classList.toggle('collapsed');
+      expand.textContent = collapsed ? '展开全文' : '收起';
+    };
+    wrap.appendChild(expand);
+  }
+  $('messages').appendChild(wrap);
   $('messages').scrollTop = $('messages').scrollHeight;
 }
 function connect() {

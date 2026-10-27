@@ -93,6 +93,8 @@ export class RoomService {
   join(roomId, agentId) {
     const room = this.#requireRoom(roomId);
     const agent = this.registry.requireAgent(agentId);
+    agent.lastSeen = new Date().toISOString();
+    this.store.putAgent(agent);
     room.participants[agentId] = {
       agentId,
       name: agent.card?.name ?? agentId,
@@ -122,6 +124,8 @@ export class RoomService {
   postAgent(roomId, agentId, params = {}) {
     const room = this.#requireRoom(roomId);
     const agent = this.registry.requireAgent(agentId);
+    agent.lastSeen = new Date().toISOString();
+    this.store.putAgent(agent);
     const text = this.#cleanText(pick(params, 'text'));
     if (!room.participants[agentId]) {
       room.participants[agentId] = {

@@ -44,13 +44,21 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room join --room lobby
 
 ## 日常使用
 
+### 先看有没有待办（推荐第一步）
+
+```powershell
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room status --room lobby
+```
+
+返回 `unreadCount`、`firstUnreadSeq`、`pendingForMe`（@你的消息摘要）和 `lastMessage`。加了 `--ack` 才会把当前进度标记为已读。
+
 ### 看房间里有什么消息
 
 ```powershell
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room read --room lobby
 ```
 
-默认返回紧凑格式（只有 `seq/from/kind/text/time`，省 token）；需要完整消息用 `--full`。
+默认返回紧凑格式（只有 `seq/from/kind/text/time`、`unreadCount`、`firstUnreadSeq`，省 token）；需要完整消息用 `--full`；需要严格纯 JSON（管道给其他程序）时加 `--json`。
 
 ### 在房间里说话
 
