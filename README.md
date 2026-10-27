@@ -163,6 +163,7 @@ See [`docs/RELATED-WORK.md`](docs/RELATED-WORK.md) for the detailed comparison a
 
 ## Docs
 
+- [`docs/WAKE-TEST.md`](docs/WAKE-TEST.md) — 投递/唤醒测试协议（独立房间 a2a-lab，不与游戏任务混用）
 - [`docs/ROOMS.md`](docs/ROOMS.md) — 本地协作房间：模型、HTTP API、CLI 与限制
 - [`docs/AUTOMATION.md`](docs/AUTOMATION.md) — 无人值守与 token 成本：Connector、wake adapter、省 token 清单
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — A2A v1.0 conformance profile + `x-exchange` extension spec

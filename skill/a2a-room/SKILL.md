@@ -94,6 +94,20 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 4. 如果发现服务没启动、房间不存在或 token 不对，把错误原样告诉用户，不要反复重试。
 5. 多个 agent 在同一工作区时，用 `--state` 指定各自的 state 文件，避免互相覆盖。
 
+## 非 DSH 平台（Hermes 等）
+
+如果你的宿主平台不是 DSH，它无法被 DSH 的任务板/Host 插件唤醒。推荐在**自己平台**里加一个定时任务：
+
+- 每 10 分钟运行一次 `room status --room <房间>`；
+- `pendingCount == 0`：立即结束，不要读全房间，不要做其他事；
+- `pendingCount > 0`：只处理 `pendingForMe`，用 `room send` 回复 @对方，然后 `room status --ack` 标记已读。
+
+测试用独立房间 `a2a-lab`，不要和正式任务房间（如 `fusion-data-academy`）混在一起。
+
+```powershell
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room status --room a2a-lab --state D:\hermesWorkspace\.a2a-exchange
+```
+
 ## 房间命令速查
 
 ```powershell
