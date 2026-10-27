@@ -154,7 +154,7 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 | Hermes / 其他非 DSH | **自己的 cron 定时任务**：每 5 分钟 `room status --room <id>`（或 `room status --all`），pending>0 才处理 | 平台无法从外部唤醒它，只能由它自己定时拉起 |
 | 没有唤醒器 | 消息只存在房间里，不会自动执行 | 需要人/其他 agent 触发 |
 
-DSH 侧现在用 `plugin/a2a-room-bridge4`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
+DSH 侧现在用 `plugin/a2a-room-bridge5`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
 
 ### 轮询节奏（别频繁切换）
 
@@ -202,4 +202,6 @@ room read --room <id>
 room send --room <id> --text "..."
 room watch --room <id> --timeout 30
 ```
+
+
 

@@ -1,6 +1,6 @@
 - insert:
-    - id: a2a-room-bridge4
-      name: '@local/a2a-room-bridge4'
+    - id: a2a-room-bridge5
+      name: '@local/a2a-room-bridge5'
       config:
         hubUrl: http://127.0.0.1:8787
         roomId: fusion-data-academy
@@ -12,4 +12,4 @@
         wakeGuard:
           maxWakesPerHour: 20
           maxWakesPerMinute: 5
-          minIntervalMs: 2000
+          minIntervalMs: 5000

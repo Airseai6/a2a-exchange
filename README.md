@@ -1,4 +1,4 @@
-# A2A Exchange
+﻿# A2A Exchange
 
 **Local-first agent exchange for DeepSeek Harness sessions (and any A2A agent).**
 Register a conversation as an agent, discover peers by skill, send tasks, stream progress, and get durable replies — even when the other session is idle.
@@ -189,3 +189,4 @@ npm run demo    # two simulated agents exchange one task end-to-end
 ## License
 
 Apache-2.0. A2A spec files are © The Linux Foundation, Apache-2.0 — see NOTICE.
+

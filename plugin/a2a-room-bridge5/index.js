@@ -1,4 +1,4 @@
-﻿// A2A Exchange room bridge (Host-only DSH plugin).
+// A2A Exchange room bridge (Host-only DSH plugin).
 //
 // Watches one A2A Exchange room and injects a compact prompt into mapped DSH
 // sessions when a message mentions their agent. No LLM work happens here; this
@@ -63,7 +63,7 @@ export function apply(ctx, config = {}) {
   const guardConfig = config.wakeGuard ?? {};
   const maxWakesPerHour = Math.max(1, Number(guardConfig.maxWakesPerHour ?? 20));
   const maxWakesPerMinute = Math.max(1, Number(guardConfig.maxWakesPerMinute ?? 5));
-  const minIntervalMs = Math.max(0, Number(guardConfig.minIntervalMs ?? 2000));
+  const minIntervalMs = Math.max(0, Number(guardConfig.minIntervalMs ?? 5000));
   const wakeHistory = new Map();
   function guardWake(agentId) {
     const now = Date.now();
@@ -108,15 +108,20 @@ export function apply(ctx, config = {}) {
         next.push({ agentId: agent.agentId, agentName: card.name ?? agent.name ?? agent.agentId, sessionId });
       }
       dynamicBindings = next;
+      for (const binding of effectiveBindings()) {
+        if (roomState.bindings[binding.agentId] === undefined) roomState.bindings[binding.agentId] = roomState.lastSeq;
+      }
       const names = effectiveBindings().map((b) => `${b.agentId}=${b.sessionId}`).join(',');
-      console.log(`[a2a-room-bridge4] auto-bind ${names || '(none)'}`);
+      console.log(`[a2a-room-bridge5] auto-bind ${names || '(none)'}`);
     } catch (error) {
-      console.error('[a2a-room-bridge4] auto-bind failed:', error?.message);
+      console.error('[a2a-room-bridge5] auto-bind failed:', error?.message);
     }
   }
   const stateFile = String(config.stateFile ?? path.join(process.env.DSH_HOME ?? os.homedir(), 'a2a-room-bridge-state.json'));
   const state = loadState(stateFile);
-  if (!state.rooms[roomId]) state.rooms[roomId] = { lastSeq: 0 };
+  const roomState = state.rooms[roomId] ?? (state.rooms[roomId] = { lastSeq: 0 });
+  if (!roomState.bindings || typeof roomState.bindings !== 'object') roomState.bindings = {};
+  roomState.lastSeq = Number(roomState.lastSeq ?? 0);
   let stopped = false;
   let running = false;
 
@@ -124,7 +129,13 @@ export function apply(ctx, config = {}) {
     if (running || stopped) return;
     running = true;
     try {
-      const since = Number(state.rooms[roomId]?.lastSeq ?? 0);
+      const bindings = effectiveBindings();
+      if (bindings.length === 0) return;
+      for (const binding of bindings) {
+        if (roomState.bindings[binding.agentId] === undefined) roomState.bindings[binding.agentId] = roomState.lastSeq;
+      }
+      const cursors = bindings.map((b) => Number(roomState.bindings[b.agentId] ?? 0));
+      const since = Math.min(...cursors, roomState.lastSeq);
       const response = await fetch(`${hubUrl}/api/rooms/${encodeURIComponent(roomId)}?since=${since}&limit=100`, {
         headers: token ? { authorization: `Bearer ${token}` } : {},
       });
@@ -132,24 +143,31 @@ export function apply(ctx, config = {}) {
       const data = await response.json();
       const messages = Array.isArray(data.messages) ? data.messages : [];
       if (messages.length === 0) return;
-      const bindings = effectiveBindings();
+      const latestSeq = messages.at(-1).seq;
 
-      // Group new messages per binding; each binding gets at most one prompt per tick.
+      // Per-binding cursors: a message is only consumed for an agent after its
+      // wake prompt was admitted (or it did not mention that agent). Guard-
+      // suppressed messages stay pending and are retried on a later tick.
       const perBinding = new Map(bindings.map((b) => [b.agentId, []]));
       for (const message of messages) {
-        if (message.sender?.kind === 'agent') {
-          // Do not wake an agent for its own messages.
-          const own = bindings.some((b) => b.agentId === message.sender?.agentId);
-          if (own) continue;
-        }
         for (const binding of bindings) {
-          if (mentioned(message.text, binding)) perBinding.get(binding.agentId).push(message);
+          if (Number(message.seq) <= Number(roomState.bindings[binding.agentId] ?? 0)) continue;
+          // Skip only the sender's own messages, not every bound agent's messages.
+          if (message.sender?.kind === 'agent' && message.sender?.agentId === binding.agentId) continue;
+          if (mentioned(message.text, binding)) {
+            perBinding.get(binding.agentId).push(message);
+          } else {
+            roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(message.seq));
+          }
         }
       }
 
       for (const binding of bindings) {
         const batch = perBinding.get(binding.agentId);
-        if (!batch || batch.length === 0) continue;
+        if (!batch || batch.length === 0) {
+          roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(latestSeq));
+          continue;
+        }
         const digest = batch.map(compactMessage);
         const prompt = [
           `[A2A Exchange 房间 ${roomId} 有新消息 · @${binding.agentId}]`,
@@ -160,14 +178,12 @@ export function apply(ctx, config = {}) {
         ].join('\n');
         const blocked = guardWake(binding.agentId);
         if (blocked) {
-          console.warn(`[a2a-room-bridge4] wake suppressed ${binding.agentId}: ${blocked}`);
+          console.warn(`[a2a-room-bridge5] wake suppressed ${binding.agentId}: ${blocked}; cursor kept for retry`);
           continue;
         }
         try {
-          // Prefer a direct queue prompt: schedule.create's delivery path also
-          // goes through sessionController.prompt, but currently passes no
-          // signal and hits a throwIfAborted bug. Supplying a real signal here
-          // avoids that path while still waking the mapped session.
+          // Direct queue prompt with a real AbortSignal (schedule.create's
+          // delivery path currently hits throwIfAborted when signal is absent).
           await ctx.sessionController.prompt(
             {
               requestId: `a2a-${randomUUID()}`,
@@ -178,29 +194,29 @@ export function apply(ctx, config = {}) {
             },
             new AbortController().signal,
           );
-          console.log(`[a2a-room-bridge4] prompted wake ${binding.agentId} seq=${batch.at(-1).seq}`);
+          roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(batch.at(-1).seq));
+          console.log(`[a2a-room-bridge5] prompted wake ${binding.agentId} seq=${batch.at(-1).seq}`);
         } catch (promptError) {
-          console.error(`[a2a-room-bridge4] prompt wake failed for ${binding.agentId}:`, promptError?.message);
+          console.error(`[a2a-room-bridge5] prompt wake failed for ${binding.agentId}:`, promptError?.message);
           try {
             await ctx.schedule.create(binding.sessionId, {
               title: `A2A 房间 ${roomId} 唤醒`,
               prompt,
               after_seconds: 1,
             });
-            console.log(`[a2a-room-bridge4] scheduled wake ${binding.agentId} seq=${batch.at(-1).seq}`);
+            roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(batch.at(-1).seq));
+            console.log(`[a2a-room-bridge5] scheduled wake ${binding.agentId} seq=${batch.at(-1).seq}`);
           } catch (error) {
-            console.error(`[a2a-room-bridge4] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
+            // Leave cursor unchanged so the message is retried later.
+            console.error(`[a2a-room-bridge5] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
           }
         }
       }
 
-      const nextSeq = messages.at(-1).seq;
-      if (nextSeq > since) {
-        state.rooms[roomId].lastSeq = nextSeq;
-        saveState(stateFile, state);
-      }
+      if (Number(latestSeq) > Number(roomState.lastSeq)) roomState.lastSeq = Number(latestSeq);
+      saveState(stateFile, state);
     } catch (error) {
-      console.error('[a2a-room-bridge] tick failed:', error?.message);
+      console.error('[a2a-room-bridge5] tick failed:', error?.message);
     } finally {
       running = false;
     }
@@ -216,6 +232,7 @@ export function apply(ctx, config = {}) {
     clearInterval(timer);
     clearInterval(bindTimer);
   });
-  console.log(`[a2a-room-bridge4] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
+  console.log(`[a2a-room-bridge5] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
 }
+
 

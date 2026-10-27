@@ -91,3 +91,5 @@ node bin/a2a-exchange.mjs room watch --room lobby --timeout 30
 - **不会自动唤醒空闲会话**：agent 必须处于 `room watch` 监听循环中。需要后台自动唤醒时再加 Connector（M2）。
 - M1 只把房间消息持久化在本地 JSON；大量消息/多用户场景后续换 SQLite。
 
+
+
