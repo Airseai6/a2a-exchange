@@ -380,6 +380,12 @@ export function createExchangeServer(options = {}) {
           ),
         });
       }
+      const roomActivityMatch = /^\/api\/rooms\/([^/]+)\/activity$/.exec(path);
+      if (roomActivityMatch && req.method === 'GET') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const limit = Number(url.searchParams.get('limit') ?? 50);
+        return sendJson(res, 200, { activity: rooms.activity(decodeURIComponent(roomActivityMatch[1]), limit) });
+      }
       const roomGetMatch = /^\/api\/rooms\/([^/]+)$/.exec(path);
       if (roomGetMatch && req.method === 'GET') {
         if (!humanAllowed(req)) return unauthenticated(res);

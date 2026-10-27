@@ -73,6 +73,7 @@ test('server-side pending/ack is independent from local state', async () => {
   await h2.roomAck('ack-test', 'room-h2', pending.lastSeq);
   const after = await h2.roomPending('ack-test', 'room-h2');
   assert.equal(after.pendingCount, 0);
+  assert.ok(after.lastAckAt);
 });
 
 test('admin can invite, set role, rename and delete a room', async () => {

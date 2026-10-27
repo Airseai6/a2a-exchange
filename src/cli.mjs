@@ -97,6 +97,7 @@ Room commands:
   room read --room <id> [--since <seq>] [--mentions] [--full]
   room send --room <id> --text "..." [--task-title "..."] [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>] [--msg-type chat|progress|verify]
   room tasks --room <id>
+  room activity --room <id> [--limit 50]
   room task-create --room <id> --task-title "..." [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>]
   room task-action --room <id> --task <taskId> --action claim|resolve|verify|reopen|close [--pass|--fail] [--note "..."]
   room watch --room <id> [--timeout 30] [--mentions]   (first new batch or timeout)
@@ -512,6 +513,9 @@ export async function main(argv = process.argv.slice(2)) {
           } else {
             print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId, opts['msg-type'] || 'chat'));
           }
+        } else if (sub === 'activity') {
+          const data = await client.request(`/api/rooms/${encodeURIComponent(roomId)}/activity?limit=${encodeURIComponent(opts.limit ?? 50)}`);
+          print(data);
         } else if (sub === 'tasks') {
           print(await client.listRoomTasks(roomId));
         } else if (sub === 'task-create') {

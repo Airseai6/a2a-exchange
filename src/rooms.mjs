@@ -106,6 +106,7 @@ export class RoomService {
       lastSeen: nowIso(),
     };
     this.store.putRoom(room);
+    this.store.appendRoomActivity?.({ roomId, agentId, type: 'join', detail: room.participants[agentId].role });
     this.#publish(roomId, { type: 'participants', roomId, participants: this.participants(room) });
     return { room: this.summary(room), participant: room.participants[agentId] };
   }
@@ -257,11 +258,14 @@ export class RoomService {
     const since = Number(room.acks[agentId] ?? 0);
     const name = agent.card?.name ?? agentId;
     const messages = room.messages.filter((m) => m.seq > since && this.#mentions(m.text, agentId, name));
+    const ackInfo = this.store.getRoomAck?.(roomId, agentId) ?? { seq: since, ackedAt: null };
     return {
       roomId,
       agentId,
       since,
       lastSeq: room.nextSeq - 1,
+      lastAckSeq: ackInfo.seq,
+      lastAckAt: ackInfo.ackedAt,
       pendingCount: messages.length,
       pendingForMe: messages.map((m) => ({
         seq: m.seq,
@@ -279,7 +283,15 @@ export class RoomService {
     const target = Math.min(Number(seq ?? room.nextSeq - 1) || 0, room.nextSeq - 1);
     room.acks[agentId] = Math.max(Number(room.acks[agentId] ?? 0), target);
     this.store.putRoom(room);
-    return { ok: true, roomId, agentId, ackSeq: room.acks[agentId] };
+    const ackedAt = nowIso();
+    this.store.setRoomAckTime?.(roomId, agentId, ackedAt);
+    this.store.appendRoomActivity?.({ roomId, agentId, type: 'ack', seq: room.acks[agentId] });
+    return { ok: true, roomId, agentId, ackSeq: room.acks[agentId], ackedAt };
+  }
+
+  activity(roomId, limit = 50) {
+    this.#requireRoom(roomId);
+    return this.store.listRoomActivity?.(roomId, limit) ?? [];
   }
 
   #mentions(text, agentId, agentName) {

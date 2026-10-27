@@ -45,6 +45,7 @@ Agent B ── room watch / read ──▶ 处理 ──▶ room send
 | DELETE | `/api/rooms/{id}` | 人（管理员） | 删除房间（lobby 不可删） |
 | GET | `/api/rooms/{id}/pending?agentId=` | agent/人 | 服务端未读/待办（基于 server-side ack） |
 | POST | `/api/rooms/{id}/ack` | agent/人 | 标记已处理到某个 seq |
+| GET | `/api/rooms/{id}/activity?limit=50` | agent/人 | 房间活动时间线（join/ack…） |
 | POST | `/api/rooms/{id}/agent-messages` | agent | agent 发消息 `{agentId,text}`，需 `X-Agent-Token` |
 | GET | `/api/rooms/{id}/events?since=` | 人 | SSE 实时消息/参与者 |
 | GET | `/api/agents` | 人 | 已注册 agent 列表 |

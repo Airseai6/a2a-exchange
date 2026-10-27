@@ -82,6 +82,16 @@ CREATE TABLE IF NOT EXISTS room_task_events (
   note TEXT,
   created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS room_activity (
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  room_id TEXT NOT NULL,
+  agent_id TEXT,
+  type TEXT NOT NULL,
+  seq INTEGER,
+  detail TEXT,
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_room_activity_room ON room_activity(room_id, event_id);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 
@@ -149,9 +159,12 @@ export class SqliteStore {
     const member = this.db.prepare('INSERT INTO room_members(room_id, agent_id, name, role, joined_at, last_seen) VALUES (?, ?, ?, ?, ?, ?)');
     for (const p of Object.values(room.participants ?? {})) member.run(room.id, p.agentId, p.name ?? p.agentId, p.role ?? 'member', p.joinedAt ?? null, p.lastSeen ?? null);
 
-    this.db.prepare('DELETE FROM room_acks WHERE room_id = ?').run(room.id);
-    const ack = this.db.prepare('INSERT INTO room_acks(room_id, agent_id, ack_seq, acked_at) VALUES (?, ?, ?, ?)');
-    for (const [agentId, seq] of Object.entries(room.acks ?? {})) ack.run(room.id, agentId, Number(seq) || 0, null);
+    const ack = this.db.prepare(`
+      INSERT INTO room_acks(room_id, agent_id, ack_seq, acked_at)
+      VALUES (?, ?, ?, NULL)
+      ON CONFLICT(room_id, agent_id) DO UPDATE SET ack_seq = excluded.ack_seq
+    `);
+    for (const [agentId, seq] of Object.entries(room.acks ?? {})) ack.run(room.id, agentId, Number(seq) || 0);
 
     const message = this.db.prepare(`
       INSERT INTO room_messages(message_id, room_id, seq, sender_kind, sender_id, sender_name, text, type, task_id, parts_json, time)
@@ -219,8 +232,42 @@ export class SqliteStore {
     this.db.prepare('DELETE FROM room_messages WHERE room_id = ?').run(roomId);
     this.db.prepare('DELETE FROM room_members WHERE room_id = ?').run(roomId);
     this.db.prepare('DELETE FROM room_acks WHERE room_id = ?').run(roomId);
+    this.db.prepare('DELETE FROM room_activity WHERE room_id = ?').run(roomId);
     for (const task of this.listRoomTasks(roomId)) this.deleteRoomTask(task.taskId);
     this.db.prepare('DELETE FROM rooms WHERE room_id = ?').run(roomId);
+  }
+
+  setRoomAckTime(roomId, agentId, ackedAt) {
+    this.db.prepare(`
+      INSERT INTO room_acks(room_id, agent_id, ack_seq, acked_at)
+      VALUES (?, ?, COALESCE((SELECT ack_seq FROM room_acks WHERE room_id = ? AND agent_id = ?), 0), ?)
+      ON CONFLICT(room_id, agent_id) DO UPDATE SET acked_at = excluded.acked_at
+    `).run(roomId, agentId, roomId, agentId, ackedAt);
+  }
+
+  getRoomAck(roomId, agentId) {
+    const row = this.db.prepare('SELECT ack_seq, acked_at FROM room_acks WHERE room_id = ? AND agent_id = ?').get(roomId, agentId);
+    return row ? { seq: Number(row.ack_seq), ackedAt: row.acked_at ?? null } : { seq: 0, ackedAt: null };
+  }
+
+  appendRoomActivity({ roomId, agentId, type, seq, detail }) {
+    const createdAt = new Date().toISOString();
+    const result = this.db.prepare('INSERT INTO room_activity(room_id, agent_id, type, seq, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(roomId, agentId ?? null, type, seq ?? null, detail ?? null, createdAt);
+    return { eventId: Number(result.lastInsertRowid), roomId, agentId, type, seq, detail, createdAt };
+  }
+
+  listRoomActivity(roomId, limit = 50) {
+    return this.db.prepare('SELECT * FROM room_activity WHERE room_id = ? ORDER BY event_id DESC LIMIT ?')
+      .all(roomId, Math.min(Math.max(Number(limit) || 50, 1), 200))
+      .map((row) => ({
+        eventId: row.event_id,
+        roomId: row.room_id,
+        agentId: row.agent_id,
+        type: row.type,
+        seq: row.seq,
+        detail: row.detail,
+        createdAt: row.created_at,
+      }));
   }
 
   /* ── room task board ── */
