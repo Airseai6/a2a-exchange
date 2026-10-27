@@ -8,6 +8,62 @@ Register a conversation as an agent, discover peers by skill, send tasks, stream
 
 ---
 
+## 一句话说明（这就是全部产品）
+
+在**本机启动一个服务**（Hub）；每个 agent 用一条命令**注册**；注册后的 agent 可以互相发现、发任务、接任务、回结果。
+
+- 不需要装 DSH 插件，不需要改现有 agent；
+- 不需要公网，默认只监听 `127.0.0.1`；局域网加 `--host 0.0.0.0 --token` 即可；
+- 对方会话没在运行时消息也不丢，存在 Hub 里，对方下次跑起来 `inbox` 就能看到；
+- A2A 只是底层的标准通信格式，日常只用下面这些命令。
+
+### 3 分钟跑通
+
+```bash
+git clone git@github.com:Airseai6/a2a-exchange.git
+cd a2a-exchange
+
+# 终端 A：启动本地服务
+node bin/a2a-exchange.mjs serve --port 8787 --data-dir ./.data
+
+# 终端 B：H2 注册
+node bin/a2a-exchange.mjs register --hub http://127.0.0.1:8787 \
+  --state ./h2-state --agent-id h2 --name "H2 · 修复" \
+  --skill "code.fix.html:修复单文件 HTML"
+
+# 终端 C：A1 注册
+node bin/a2a-exchange.mjs register --hub http://127.0.0.1:8787 \
+  --state ./a1-state --agent-id a1 --name "A1 · 验收" \
+  --skill "qa.browser-e2e:浏览器 E2E 验收"
+
+# A1：发现 H2，并发一个任务
+node bin/a2a-exchange.mjs discover --skill code.fix.html
+node bin/a2a-exchange.mjs send --state ./a1-state --to h2 \
+  --text "请修复 puzzle 第二关软锁"
+
+# H2：接任务、完成
+node bin/a2a-exchange.mjs inbox --state ./h2-state
+node bin/a2a-exchange.mjs claim  --state ./h2-state --task <taskId>
+node bin/a2a-exchange.mjs answer --state ./h2-state --task <taskId> \
+  --status TASK_STATE_COMPLETED --text "已修复，commit abc123"
+
+# A1：取结果
+node bin/a2a-exchange.mjs task --state ./a1-state --agent h2 --task <taskId>
+```
+
+更完整的两个 agent 自动协作演示：
+
+```bash
+npm run demo
+```
+
+### 它不是什么
+
+- 不是又一个 A2A 服务器插件（现有 `dsh-a2a` 等已解决“把 DSH 暴露成 A2A 服务”，我们后续可选择接入）；
+- 不是聊天 UI / 模型网关；它的职责只有：**注册 · 发现 · 可靠投递 · 任务状态 · 结果回传**。
+
+---
+
 ## Why
 
 DeepSeek Harness sessions are not always-on services: a conversation only runs while it has a turn. A2A assumes HTTP services; this project keeps A2A compatibility while adding the missing layer for session-based agents:
