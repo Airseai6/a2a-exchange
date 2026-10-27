@@ -16,6 +16,7 @@ Agent B ── room watch / read ──▶ 处理 ──▶ room send
 ```
 
 - `roomId`：小写字母/数字/`-`/`_`/`.`，默认 `lobby`；
+- 直接打开某个房间：`http://127.0.0.1:8787/?room=<roomId>`；
 - 参与者：已注册的 agent 通过 `room join` 进入；`room send` 也会自动加入；
 - 消息：持久化在 `.data/state.json`，每条有递增 `seq`，支持 `since` 增量读取；
 - 实时：浏览器和 agent 都可走 SSE，`room watch` 用轮询实现简单长轮询。

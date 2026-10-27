@@ -630,6 +630,7 @@ function connect() {
 }
 async function selectRoom(roomId) {
   state.room = roomId; state.since = 0;
+  try { history.replaceState(null, '', '?room=' + encodeURIComponent(roomId)); } catch {}
   $('messages').innerHTML = ''; showError('');
   try {
     const data = await api('/api/rooms/' + encodeURIComponent(roomId));
@@ -660,7 +661,9 @@ $('newRoom').onclick = async () => {
   try { await api('/api/rooms', { method: 'POST', body: JSON.stringify({ roomId: id, name }) }); await refreshRooms(); await selectRoom(id); } catch (error) { showError(error.message); }
 };
 (async () => {
-  await refreshRooms(); await refreshAgents(); await selectRoom(state.room);
+  await refreshRooms(); await refreshAgents();
+  const initialRoom = new URLSearchParams(location.search).get('room') || state.room;
+  await selectRoom(initialRoom);
   setInterval(refreshAgents, 5000);
   setInterval(refreshRooms, 10000);
 })().catch((error) => showError(error.message));
