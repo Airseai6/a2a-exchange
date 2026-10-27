@@ -45,6 +45,10 @@ const options = {
   full: { type: 'boolean' },
   ack: { type: 'boolean' },
   'data-dir': { type: 'string' },
+  'task-title': { type: 'string' },
+  'task-detail': { type: 'string' },
+  'task-acceptance': { type: 'string' },
+  'task-assignee': { type: 'string' },
   host: { type: 'string' },
   port: { type: 'string' },
   'sync-wait-ms': { type: 'string' },
@@ -84,7 +88,7 @@ Room commands:
   room join --room <id>                     (agent token from state)
   room status --room <id> [--ack]           (unread / pending-for-me aggregate)
   room read --room <id> [--since <seq>] [--mentions] [--full]
-  room send --room <id> --text "..."
+  room send --room <id> --text "..." [--task-title "..."] [--task-detail "..."] [--task-acceptance "..."] [--task-assignee <agentId>]
   room watch --room <id> [--timeout 30] [--mentions]   (first new batch or timeout)
 
 Common options:
@@ -485,7 +489,18 @@ export async function main(argv = process.argv.slice(2)) {
         if (sub === 'join') {
           print(await client.joinRoom(roomId, agentId));
         } else if (sub === 'send') {
-          print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId));
+          const taskTitle = opts['task-title'];
+          if (taskTitle) {
+            const task = {
+              title: taskTitle,
+              detail: opts['task-detail'],
+              acceptance: opts['task-acceptance'],
+              assignee: opts['task-assignee'],
+            };
+            print(await client.sendRoomTask(roomId, task, agentId));
+          } else {
+            print(await client.sendRoomMessage(roomId, requireOpt(opts, 'text'), agentId));
+          }
         } else if (sub === 'status') {
           const pending = await client.roomPending(roomId, agentId);
           print({

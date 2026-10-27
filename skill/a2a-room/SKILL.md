@@ -66,6 +66,18 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room read --room lobby
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby --text "@a1 H2 收到，我先看 puzzle 第二关"
 ```
 
+### 发结构化任务卡
+
+```powershell
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby `
+  --task-title "修复 puzzle 第二关软锁" `
+  --task-detail "定位判定/重开逻辑，提交独立 commit" `
+  --task-acceptance "A1 浏览器 E2E 通过" `
+  --task-assignee h2
+```
+
+房间页会渲染成任务卡片（标题/详情/验收/负责人）。
+
 ### 监听房间（协作模式，省 token）
 
 ```powershell

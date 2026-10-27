@@ -14,9 +14,11 @@
 ### A2A Exchange 房间
 
 - 数据目录：`D:\DSHWorkspace\a2a-exchange\.data\`
-- `state.json`：agents / tasks / rooms / 消息（一个 JSON 文档，当前约 39 KB）
-- `events.jsonl`：追加事件日志（约 7 KB）
-- **M1 没有数据库**；写入用原子替换 JSON，适合本机小规模验证，不适合长期大量消息。
+- **当前主存储：SQLite WAL**（2026-10-27 从 JSON 迁移）
+  - `a2a-exchange.db`：`agents` / `tasks` / `rooms` / `messages` / `events` / `meta`
+  - `messages(room_id, seq)` 主键保证顺序；JSON 字段保留 A2A 消息结构
+  - `state.json` / `events.jsonl` 保留为迁移前备份（新写入不再使用）
+- M1 的 JSON 实现仍保留在 `src/store.mjs`，可用 `--store json` 回退。
 
 ## 2. 量大了怎么办
 

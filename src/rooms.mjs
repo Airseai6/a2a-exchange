@@ -148,7 +148,7 @@ export class RoomService {
     const room = this.#requireRoom(roomId);
     const text = this.#cleanText(pick(params, 'text'));
     const name = String(pick(params, 'name') ?? '我（人类）').slice(0, 64);
-    return this.#post(room, { kind: 'human', name }, text);
+    return this.#post(room, { kind: 'human', name }, text, this.#cleanTask(pick(params, 'task')));
   }
 
   postAgent(roomId, agentId, params = {}) {
@@ -157,6 +157,7 @@ export class RoomService {
     agent.lastSeen = new Date().toISOString();
     this.store.putAgent(agent);
     const text = this.#cleanText(pick(params, 'text'));
+    const task = this.#cleanTask(pick(params, 'task'));
     if (!room.participants[agentId]) {
       room.participants[agentId] = {
         agentId,
@@ -168,7 +169,7 @@ export class RoomService {
     } else {
       room.participants[agentId].lastSeen = nowIso();
     }
-    const message = this.#post(room, { kind: 'agent', agentId, name: agent.card?.name ?? agentId }, text);
+    const message = this.#post(room, { kind: 'agent', agentId, name: agent.card?.name ?? agentId }, text, task);
     this.#publish(roomId, { type: 'participants', roomId, participants: this.participants(room) });
     return message;
   }
@@ -228,7 +229,7 @@ export class RoomService {
     return () => this.subs.get(roomId)?.delete(fn);
   }
 
-  #post(room, sender, text) {
+  #post(room, sender, text, task = undefined) {
     const message = {
       messageId: uuid(),
       roomId: room.id,
@@ -236,6 +237,7 @@ export class RoomService {
       sender,
       text,
       parts: [{ text, mediaType: 'text/plain' }],
+      ...(task ? { task } : {}),
       time: nowIso(),
     };
     room.messages.push(message);
@@ -267,6 +269,24 @@ export class RoomService {
       throw new RpcError(-32602, 'text too long (max 8000)', { a2aCode: 'INVALID_ARGUMENT' });
     }
     return value.trim();
+  }
+
+  #cleanTask(value) {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value !== 'object' || Array.isArray(value)) {
+      throw new RpcError(-32602, 'task must be an object', { a2aCode: 'INVALID_ARGUMENT' });
+    }
+    const title = String(value.title ?? '').trim();
+    if (!title) throw new RpcError(-32602, 'task.title is required', { a2aCode: 'INVALID_ARGUMENT' });
+    const task = {
+      title: title.slice(0, 200),
+      detail: String(value.detail ?? '').slice(0, 4000),
+      acceptance: String(value.acceptance ?? '').slice(0, 2000),
+      assignee: value.assignee ? String(value.assignee).slice(0, 128) : undefined,
+      status: 'open',
+      createdAt: nowIso(),
+    };
+    return task;
   }
 
   #requireRoom(roomId) {

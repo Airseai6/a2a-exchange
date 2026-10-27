@@ -90,3 +90,18 @@ test('admin can invite, set role, rename and delete a room', async () => {
   await a1.deleteRoom('admin-test');
   await assert.rejects(() => a1.getRoom('admin-test'), /Room not found/);
 });
+
+test('structured task messages persist with task details', async () => {
+  await a1.createRoom({ roomId: 'task-test', name: 'Task Test' });
+  const sent = await a1.sendRoomTask('task-test', {
+    title: '测试任务卡',
+    detail: '验证结构化和持久化',
+    acceptance: '房间页出现任务卡',
+    assignee: 'room-h2',
+  }, 'room-a1');
+  assert.equal(sent.message.task.title, '测试任务卡');
+  const data = await a1.getRoom('task-test');
+  const last = data.messages.at(-1);
+  assert.equal(last.task.acceptance, '房间页出现任务卡');
+  assert.equal(last.task.assignee, 'room-h2');
+});

@@ -5,6 +5,7 @@ import { Registry } from './registry.mjs';
 import { RoomService } from './rooms.mjs';
 import { attachHeartbeat, sseHead, sseWrite, serveAgentEvents, serveTaskStream } from './sse.mjs';
 import { ExchangeStore } from './store.mjs';
+import { SqliteStore } from './sqlite-store.mjs';
 import { TaskService } from './tasks.mjs';
 import { HttpError, nowIso, pick, RpcError, safeEqual } from './util.mjs';
 
@@ -85,7 +86,8 @@ function sendRpcError(res, id, error) {
 }
 
 export function createExchangeServer(options = {}) {
-  const store = new ExchangeStore({ dataDir: options.dataDir ?? './.data' }).load();
+  const StoreCtor = options.store === 'json' ? ExchangeStore : SqliteStore;
+  const store = new StoreCtor({ dataDir: options.dataDir ?? './.data' }).load();
   const registry = new Registry(store, {
     syncWaitMs: options.syncWaitMs ?? 20000,
     hubVersion: options.version ?? '0.1.0',
@@ -507,7 +509,10 @@ export function createExchangeServer(options = {}) {
     },
     close() {
       return new Promise((resolve) => {
-        server.close(() => resolve());
+        server.close(() => {
+          try { store.close?.(); } catch {}
+          resolve();
+        });
         server.closeAllConnections?.();
       });
     },
@@ -547,11 +552,15 @@ function dashboardHtml() {
   aside { border-right:1px solid var(--line); padding:14px; overflow:auto; min-height:0; }
   aside.right { border-right:0; border-left:1px solid var(--line); }
   .label { font-size:11px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; margin:4px 0 8px; }
-  .room { width:100%; text-align:left; background:transparent; color:var(--text); border:1px solid transparent; border-radius:10px; padding:9px 10px; cursor:pointer; display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+  .room { width:100%; text-align:left; background:transparent; color:var(--text); border:1px solid transparent; border-radius:10px; padding:8px 6px 8px 10px; cursor:pointer; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
   .room:hover { background:var(--panel); }
   .room.active { background:var(--panel2); border-color:var(--line); }
-  .room strong { font-size:13px; }
+  .room-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .room strong { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .room span { color:var(--muted); font-size:11px; }
+  .room-gear { flex:none; background:transparent; color:var(--muted); border:0; font-size:14px; cursor:pointer; padding:6px; border-radius:7px; opacity:0; transition:opacity .12s, background .12s; }
+  .room:hover .room-gear, .room.active .room-gear { opacity:1; }
+  .room-gear:hover { background:var(--panel); color:var(--text); }
   button.new { width:100%; background:var(--panel); color:var(--text); border:1px dashed var(--line); border-radius:9px; padding:8px; cursor:pointer; font-size:12px; }
   button.new:hover { border-color:var(--accent); }
   button.manage { width:100%; margin-top:6px; background:transparent; color:var(--text); border:1px solid var(--line); border-radius:9px; padding:8px; cursor:pointer; font-size:12px; }
@@ -575,7 +584,13 @@ function dashboardHtml() {
   .roomhead { padding:14px 20px; border-bottom:1px solid var(--line); }
   .roomhead h2 { margin:0 0 4px; font-size:17px; }
   .roomhead p { margin:0; color:var(--muted); font-size:12px; }
-  #messages { flex:1; min-height:0; overflow:auto; padding:18px 20px; display:flex; flex-direction:column; gap:12px; }
+  #messages { flex:1; min-height:0; overflow:auto; padding:18px 20px; display:flex; flex-direction:column; gap:12px; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+  #messages::-webkit-scrollbar { width:8px; }
+  #messages::-webkit-scrollbar-track { background:transparent; }
+  #messages::-webkit-scrollbar-thumb { background:transparent; border-radius:8px; }
+  #messages.scrolling { scrollbar-color:#3a4150 transparent; }
+  #messages.scrolling::-webkit-scrollbar-thumb { background:#3a4150; }
+  #messages.scrolling::-webkit-scrollbar-thumb:hover { background:#4a5263; }
   .msg { max-width:78%; display:flex; flex-direction:column; gap:4px; }
   .msg.human { align-self:flex-end; align-items:flex-end; }
   .msg.agent { align-self:flex-start; align-items:flex-start; }
@@ -585,6 +600,11 @@ function dashboardHtml() {
   button.expand { align-self:flex-start; margin-top:4px; background:transparent; color:var(--accent); border:0; font-size:12px; cursor:pointer; padding:0; }
   .msg.human .bubble { background:var(--human); border-color:#4a5f8d; }
   .msg.agent .bubble { background:var(--agent); }
+  .bubble.task-bubble { background:#1b2432; border-color:#35435f; }
+  .task-head { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; }
+  .task-tag { font-size:10px; font-weight:500; color:#9fc0ff; border:1px solid #3b527a; background:#152238; border-radius:999px; padding:1px 7px; }
+  .task-kv { font-size:12px; color:var(--muted); margin-top:6px; white-space:pre-wrap; }
+  .task-kv b { color:var(--text); font-weight:500; }
   .composer { border-top:1px solid var(--line); padding:12px 20px; display:flex; gap:10px; align-items:flex-end; }
   textarea { flex:1; resize:none; height:52px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-family:inherit; font-size:14px; outline:none; }
   textarea:focus { border-color:var(--accent); }
@@ -613,7 +633,6 @@ function dashboardHtml() {
     <div class="label">房间</div>
     <div id="rooms"></div>
     <button class="new" id="newRoom">＋ 新建房间</button>
-    <button class="manage" id="manageRoom">⚙ 管理当前房间</button>
   </aside>
   <main>
     <div class="roomhead"><h2 id="roomTitle">协作大厅</h2><p id="roomDesc">正在加载…</p></div>
@@ -658,13 +677,20 @@ async function api(path, options) {
 function renderRooms() {
   const box = $('rooms'); box.innerHTML = '';
   for (const room of state.rooms) {
-    const button = document.createElement('button');
-    button.className = 'room' + (room.id === state.room ? ' active' : '');
+    const row = document.createElement('div');
+    row.className = 'room' + (room.id === state.room ? ' active' : '');
+    row.onclick = () => selectRoom(room.id);
+    const info = document.createElement('div'); info.className = 'room-info';
     const strong = document.createElement('strong'); strong.textContent = room.name;
     const span = document.createElement('span'); span.textContent = room.messageCount + ' 条消息 · ' + room.participantCount + ' 个 agent';
-    button.append(strong, span);
-    button.onclick = () => selectRoom(room.id);
-    box.appendChild(button);
+    info.append(strong, span);
+    const gear = document.createElement('button'); gear.className = 'room-gear'; gear.textContent = '⚙'; gear.title = '管理房间';
+    gear.onclick = (event) => {
+      event.stopPropagation();
+      selectRoom(room.id).then(() => openManage()).catch((error) => showError(error.message));
+    };
+    row.append(info, gear);
+    box.appendChild(row);
   }
 }
 async function refreshRooms() {
@@ -698,9 +724,31 @@ function renderMessage(message) {
   wrap.className = 'msg ' + (message.sender.kind === 'human' ? 'human' : 'agent');
   const meta = document.createElement('div'); meta.className = 'meta';
   meta.textContent = message.sender.name + ' · ' + new Date(message.time).toLocaleTimeString();
-  const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = message.text;
+  const bubble = document.createElement('div'); bubble.className = 'bubble';
+  if (message.task) {
+    const task = message.task;
+    bubble.classList.add('task-bubble');
+    const head = document.createElement('div'); head.className = 'task-head';
+    const title = document.createElement('span'); title.textContent = '📋 ' + task.title;
+    const tag = document.createElement('span'); tag.className = 'task-tag'; tag.textContent = task.status === 'done' ? '已完成' : '任务';
+    head.append(title, tag); bubble.appendChild(head);
+    if (task.detail) {
+      const detail = document.createElement('div'); detail.className = 'task-kv';
+      detail.textContent = task.detail; bubble.appendChild(detail);
+    }
+    if (task.acceptance) {
+      const acceptance = document.createElement('div'); acceptance.className = 'task-kv';
+      acceptance.textContent = '验收：' + task.acceptance; bubble.appendChild(acceptance);
+    }
+    if (task.assignee) {
+      const assignee = document.createElement('div'); assignee.className = 'task-kv';
+      assignee.textContent = '负责人：' + task.assignee; bubble.appendChild(assignee);
+    }
+  } else {
+    bubble.textContent = message.text;
+  }
   wrap.append(meta, bubble);
-  if (message.text.length > 240) {
+  if (!message.task && message.text.length > 240) {
     bubble.classList.add('collapsed');
     const expand = document.createElement('button'); expand.className = 'expand'; expand.textContent = '展开全文';
     expand.onclick = () => {
@@ -803,7 +851,6 @@ function openManage() {
   $('manageModal').classList.remove('hidden');
 }
 
-$('manageRoom').onclick = openManage;
 $('mClose').onclick = () => $('manageModal').classList.add('hidden');
 $('mSave').onclick = async () => {
   try {
@@ -827,6 +874,14 @@ $('mDelete').onclick = async () => {
     await refreshRooms(); await selectRoom('lobby');
   } catch (error) { showError(error.message); }
 };
+
+let messagesScrollTimer = null;
+$('messages').addEventListener('scroll', () => {
+  const box = $('messages');
+  box.classList.add('scrolling');
+  if (messagesScrollTimer) clearTimeout(messagesScrollTimer);
+  messagesScrollTimer = setTimeout(() => box.classList.remove('scrolling'), 900);
+});
 
 (async () => {
   await refreshRooms(); await refreshAgents();

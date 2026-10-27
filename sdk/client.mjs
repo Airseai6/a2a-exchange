@@ -245,6 +245,9 @@ export class ExchangeClient {
   async sendRoomMessage(roomId, text, agentId = this.agentId) {
     return this.request(`/api/rooms/${encodeURIComponent(roomId)}/agent-messages`, { method: 'POST', body: { agentId, text } });
   }
+  async sendRoomTask(roomId, task, agentId = this.agentId) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/agent-messages`, { method: 'POST', body: { agentId, text: task.title, task } });
+  }
   async readRoom(roomId, since = 0) {
     const data = await this.request(`/api/rooms/${encodeURIComponent(roomId)}?since=${encodeURIComponent(since)}&limit=500`);
     return { roomId: data.room.id, messages: data.messages, lastSeq: data.lastSeq };
