@@ -1,6 +1,6 @@
 {
-  "name": "@local/a2a-room-bridge5",
-  "version": "1.0.2",
+  "name": "@local/a2a-room-bridge6",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "description": "A2A Exchange room bridge: wakes mapped DSH sessions when a room message mentions them.",

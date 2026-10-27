@@ -41,12 +41,13 @@ function mentioned(text, binding) {
     (binding.agentName ? value.includes('@' + binding.agentName) : false);
 }
 
-function compactMessage(message) {
+function compactMessage(message, maxChars = 300) {
+  const raw = String(message.text ?? '');
   return {
     seq: message.seq,
     from: message.sender?.name ?? 'unknown',
     kind: message.sender?.kind ?? 'agent',
-    text: message.text,
+    text: raw.length > maxChars ? raw.slice(0, maxChars) + '…' : raw,
     time: message.time,
   };
 }
@@ -64,7 +65,14 @@ export function apply(ctx, config = {}) {
   const maxWakesPerHour = Math.max(1, Number(guardConfig.maxWakesPerHour ?? 20));
   const maxWakesPerMinute = Math.max(1, Number(guardConfig.maxWakesPerMinute ?? 5));
   const minIntervalMs = Math.max(0, Number(guardConfig.minIntervalMs ?? 5000));
+  const wakeBatchWindowMs = Math.max(0, Number(config.wakeBatchWindowMs ?? 8000));
+  const maxBatchMessages = Math.max(1, Number(config.maxBatchMessages ?? 8));
+  const digestMessageChars = Math.max(80, Number(config.digestMessageChars ?? 300));
+  const digestMaxChars = Math.max(500, Number(config.digestMaxChars ?? 4000));
   const wakeHistory = new Map();
+  // Pending per-agent wake batches. A batch waits for a quiet window/limit so
+  // several room messages become one LLM turn instead of N turns.
+  const pendingWakes = new Map();
   function guardWake(agentId) {
     const now = Date.now();
     const history = (wakeHistory.get(agentId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
@@ -112,9 +120,9 @@ export function apply(ctx, config = {}) {
         if (roomState.bindings[binding.agentId] === undefined) roomState.bindings[binding.agentId] = roomState.lastSeq;
       }
       const names = effectiveBindings().map((b) => `${b.agentId}=${b.sessionId}`).join(',');
-      console.log(`[a2a-room-bridge5] auto-bind ${names || '(none)'}`);
+      console.log(`[a2a-room-bridge6] auto-bind ${names || '(none)'}`);
     } catch (error) {
-      console.error('[a2a-room-bridge5] auto-bind failed:', error?.message);
+      console.error('[a2a-room-bridge6] auto-bind failed:', error?.message);
     }
   }
   const stateFile = String(config.stateFile ?? path.join(process.env.DSH_HOME ?? os.homedir(), 'a2a-room-bridge-state.json'));
@@ -163,22 +171,33 @@ export function apply(ctx, config = {}) {
       }
 
       for (const binding of bindings) {
-        const batch = perBinding.get(binding.agentId);
-        if (!batch || batch.length === 0) {
+        const batch = perBinding.get(binding.agentId) ?? [];
+        let pending = pendingWakes.get(binding.agentId);
+        if (batch.length > 0) {
+          if (!pending) pending = { messages: new Map(), firstAt: Date.now() };
+          for (const message of batch) pending.messages.set(message.seq, message);
+          pendingWakes.set(binding.agentId, pending);
+        }
+        if (!pending) {
           roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(latestSeq));
           continue;
         }
-        const digest = batch.map(compactMessage);
+        const combined = [...pending.messages.values()].sort((a, b) => a.seq - b.seq);
+        const ready = combined.length >= maxBatchMessages || (Date.now() - pending.firstAt) >= wakeBatchWindowMs;
+        if (!ready) continue;
+
+        let digest = combined.slice(-maxBatchMessages).map((message) => compactMessage(message, digestMessageChars));
+        while (digest.length > 1 && JSON.stringify(digest).length > digestMaxChars) digest.shift();
         const prompt = [
           `[A2A Exchange 房间 ${roomId} 有新消息 · @${binding.agentId}]`,
-          '摘要如下（完整上下文用 room read --mentions 获取）：',
+          `共 ${digest.length} 条（已按 ${wakeBatchWindowMs}ms 合并；完整内容用 room read --mentions 获取）：`,
           JSON.stringify(digest, null, 2),
           '',
           '请只处理与你相关的部分；处理后用 room send 回复 @对方；无关则一句话说明。',
         ].join('\n');
         const blocked = guardWake(binding.agentId);
         if (blocked) {
-          console.warn(`[a2a-room-bridge5] wake suppressed ${binding.agentId}: ${blocked}; cursor kept for retry`);
+          console.warn(`[a2a-room-bridge6] wake suppressed ${binding.agentId}: ${blocked}; batch kept for retry`);
           continue;
         }
         try {
@@ -194,21 +213,23 @@ export function apply(ctx, config = {}) {
             },
             new AbortController().signal,
           );
-          roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(batch.at(-1).seq));
-          console.log(`[a2a-room-bridge5] prompted wake ${binding.agentId} seq=${batch.at(-1).seq}`);
+          roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(combined.at(-1).seq));
+          pendingWakes.delete(binding.agentId);
+          console.log(`[a2a-room-bridge6] prompted wake ${binding.agentId} seq=${combined.at(-1).seq} count=${digest.length}`);
         } catch (promptError) {
-          console.error(`[a2a-room-bridge5] prompt wake failed for ${binding.agentId}:`, promptError?.message);
+          console.error(`[a2a-room-bridge6] prompt wake failed for ${binding.agentId}:`, promptError?.message);
           try {
             await ctx.schedule.create(binding.sessionId, {
               title: `A2A 房间 ${roomId} 唤醒`,
               prompt,
               after_seconds: 1,
             });
-            roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(batch.at(-1).seq));
-            console.log(`[a2a-room-bridge5] scheduled wake ${binding.agentId} seq=${batch.at(-1).seq}`);
+            roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(combined.at(-1).seq));
+            pendingWakes.delete(binding.agentId);
+            console.log(`[a2a-room-bridge6] scheduled wake ${binding.agentId} seq=${combined.at(-1).seq} count=${digest.length}`);
           } catch (error) {
-            // Leave cursor unchanged so the message is retried later.
-            console.error(`[a2a-room-bridge5] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
+            // Keep the batch (and cursor) for a later retry.
+            console.error(`[a2a-room-bridge6] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
           }
         }
       }
@@ -216,7 +237,7 @@ export function apply(ctx, config = {}) {
       if (Number(latestSeq) > Number(roomState.lastSeq)) roomState.lastSeq = Number(latestSeq);
       saveState(stateFile, state);
     } catch (error) {
-      console.error('[a2a-room-bridge5] tick failed:', error?.message);
+      console.error('[a2a-room-bridge6] tick failed:', error?.message);
     } finally {
       running = false;
     }
@@ -232,7 +253,8 @@ export function apply(ctx, config = {}) {
     clearInterval(timer);
     clearInterval(bindTimer);
   });
-  console.log(`[a2a-room-bridge5] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
+  console.log(`[a2a-room-bridge6] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
 }
+
 
 

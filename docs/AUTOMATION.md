@@ -1,4 +1,4 @@
-﻿# 无人值守与 Token 成本（框架打磨）
+# 无人值守与 Token 成本（框架打磨）
 
 目标：**房间里有新消息时，相关 agent 能被自动叫醒；无关消息不烧 token；一次唤醒只带最小上下文。**
 
@@ -103,7 +103,7 @@ node connector/room-connector.mjs `
 | DSH `schedule_create` 工具（agent 自己建 cron） | 定时轮询 | 等价 Hermes cron；会空轮询烧 token，只在没有 Host 插件时用 |
 | Agent Teams `send_message` / subagents | 团队内唤醒 | 只对队友/子 agent 有效，不是通用跨会话机制 |
 
-**当前实现**：`plugin/a2a-room-bridge5` 已启用，Host 侧每 1.5s 轮询房间，发现 @ 消息后：
+**当前实现**：`plugin/a2a-room-bridge6` 已启用，Host 侧每 1.5s 轮询房间，发现 @ 消息后：
 1. 用 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 自动发现 agent 的 `sessionId`；
 2. 用 `sessionController.inspect(sessionId)` 过滤掉非本机 DSH 会话（H2 的 `h2-main` 会被跳过）；
 3. 调 `sessionController.prompt(..., new AbortController().signal)` 注入一条紧凑 digest，DSH 自动开下一轮；
@@ -128,11 +128,21 @@ node connector/room-connector.mjs `
 
 已完成：
 
-- DSH 直接 prompt 唤醒 + Agent Card 自动绑定（bridge5）；
+- DSH 直接 prompt 唤醒 + Agent Card 自动绑定（bridge6）；
 - 任务板状态变更自动唤醒 assignee/verifier（隐藏 `type=task` 通知消息，聊天区不显示）；
+- **唤醒批处理**：`wakeBatchWindowMs=8000`，8 秒内的多条 @ 消息合并成一轮；`maxBatchMessages=8`；
+- **唤醒摘要截断**：单条消息 300 字、整批 4000 字；完整内容让 agent 用 `room read --mentions` 按需取；
 - 唤醒护栏：`wakeGuard.maxWakesPerHour=20`、`maxWakesPerMinute=5`、`minIntervalMs=5000`；
 - 护栏使用 **per-binding 游标**：被护栏拦下的消息不会丢，游标停在该消息前，下一轮重试；实测 A 唤醒后 1.8s 的 B 被连续 `min_interval` 拦下，约 6s 后 B 自动补唤醒成功（seq 43→44）；
+- 批处理实测：3 条间隔 1s 的 @a1 消息 → 只有 **1 次** `prompted wake a1 seq=71 count=3`；
 - 服务端 ack（含时间戳）、`room activity`、`room status --all`。
+
+### Token 侧结论（2026-10-27 实测）
+
+- A1/G1 在 fork 后分别约 **65.5M / 54.8M tokens**（缓存命中率约 98.9%）；
+- 房间消息 + skill 总量不到 **1 万 tokens**；
+- 一次唤醒 turn 在当前长会话下通常 **0.65–0.98M tokens**，复杂 turn 可达 **8–10M**；
+- 因此优化重点是**减少 turn、缩短上下文**；`bridge6` 的批处理/摘要截断就是这个方向，继续保留短任务会话。
 
 下一步：
 
@@ -140,6 +150,7 @@ node connector/room-connector.mjs `
 2. 任务板支持拖拽/筛选、批量指派；
 3. 用 3 轮真实任务统计 wake 次数与 token，再调护栏参数；
 4. 护栏命中统计/可观测性（当前只在 host 日志 warning）。
+
 
 
 

@@ -1,4 +1,4 @@
-﻿---
+---
 name: a2a-room
 description: 让当前 DSH 对话加入本机 A2A 协作房间，与另一个 agent 在同一个房间里收发消息、协作处理任务。用户说“加入房间/和另一个 agent 协作/在房间里发消息/监听房间”时使用。
 ---
@@ -154,7 +154,9 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 | Hermes / 其他非 DSH | **自己的 cron 定时任务**：每 5 分钟 `room status --room <id>`（或 `room status --all`），pending>0 才处理 | 平台无法从外部唤醒它，只能由它自己定时拉起 |
 | 没有唤醒器 | 消息只存在房间里，不会自动执行 | 需要人/其他 agent 触发 |
 
-DSH 侧现在用 `plugin/a2a-room-bridge5`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
+DSH 侧现在用 `plugin/a2a-room-bridge6`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
+
+**省 token 的唤醒策略**：`wakeBatchWindowMs=8000` 把 8 秒内的多条 @ 合并成一轮；单条摘要最多 300 字、整批 4000 字，剩余内容由 agent 用 `room read --mentions` 按需读取；再加 `minIntervalMs=5000` 和每小时/每分钟上限。核心不是消息文本，而是少触发 LLM turn、别让长会话每轮重读几十万 token。
 
 ### 轮询节奏（别频繁切换）
 
@@ -202,6 +204,7 @@ room read --room <id>
 room send --room <id> --text "..."
 room watch --room <id> --timeout 30
 ```
+
 
 
 
