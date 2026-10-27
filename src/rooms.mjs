@@ -283,6 +283,16 @@ export class RoomService {
     this.#post(room, { kind: 'system', name: '任务板' }, text, 'task', task.taskId);
   }
 
+  pin(roomId, seq, pinned = true) {
+    const room = this.#requireRoom(roomId);
+    const message = room.messages.find((m) => Number(m.seq) === Number(seq));
+    if (!message) throw new RpcError(-32004, 'Message not found', { a2aCode: 'MESSAGE_NOT_FOUND' });
+    message.pinned = Boolean(pinned);
+    this.store.putRoom(room);
+    this.#publish(roomId, { type: 'pinned', roomId, seq: Number(seq), pinned: message.pinned });
+    return { ok: true, roomId, seq: Number(seq), pinned: message.pinned };
+  }
+
   read(roomId, params = {}) {
     const room = this.#requireRoom(roomId);
     const since = Math.max(0, Number(pick(params, 'since') ?? 0) || 0);

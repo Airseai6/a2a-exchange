@@ -19,7 +19,7 @@
   - `rooms`：房间元数据
   - `room_members`：成员与角色
   - `room_acks`：每人已读/ack 游标
-  - `room_messages(room_id, seq)`：聊天消息（类型、可选 task_id）
+  - `room_messages(room_id, seq)`：聊天消息（类型、可选 task_id、pinned）
   - `room_tasks`：任务板（标题/详情/验收/状态/负责人/验收人/验证人）
   - `room_task_events`：任务事件时间线（created/claim/resolve/verify…）
   - `room_activity`：房间活动时间线（join/ack…）

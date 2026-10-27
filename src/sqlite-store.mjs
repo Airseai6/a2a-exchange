@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS room_messages (
   type TEXT DEFAULT 'chat',
   task_id TEXT,
   parts_json TEXT,
+  pinned INTEGER NOT NULL DEFAULT 0,
   time TEXT,
   UNIQUE (room_id, seq)
 );
@@ -169,9 +170,9 @@ export class SqliteStore {
     for (const [agentId, seq] of Object.entries(room.acks ?? {})) ack.run(room.id, agentId, Number(seq) || 0);
 
     const message = this.db.prepare(`
-      INSERT INTO room_messages(message_id, room_id, seq, sender_kind, sender_id, sender_name, text, type, task_id, parts_json, time)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(room_id, seq) DO UPDATE SET text=excluded.text, type=excluded.type, task_id=excluded.task_id, parts_json=excluded.parts_json
+      INSERT INTO room_messages(message_id, room_id, seq, sender_kind, sender_id, sender_name, text, type, task_id, parts_json, pinned, time)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(room_id, seq) DO UPDATE SET text=excluded.text, type=excluded.type, task_id=excluded.task_id, parts_json=excluded.parts_json, pinned=excluded.pinned
     `);
     for (const m of room.messages ?? []) {
       message.run(
@@ -185,6 +186,7 @@ export class SqliteStore {
         m.type ?? 'chat',
         m.taskId ?? null,
         JSON.stringify(m.parts ?? []),
+        m.pinned ? 1 : 0,
         m.time ?? null,
       );
     }
@@ -205,6 +207,7 @@ export class SqliteStore {
       ...(m.type && m.type !== 'chat' ? { type: m.type } : {}),
       ...(m.task_id ? { taskId: m.task_id } : {}),
       parts: safeParse(m.parts_json, []),
+      pinned: Boolean(m.pinned),
       time: m.time ?? null,
     }));
     return {
@@ -378,6 +381,10 @@ export class SqliteStore {
     const taskColumns = this.#tableInfo('room_tasks');
     if (taskColumns.length > 0 && !taskColumns.some((c) => c.name === 'verifier')) {
       this.db.exec('ALTER TABLE room_tasks ADD COLUMN verifier TEXT');
+    }
+    const messageColumns = this.#tableInfo('room_messages');
+    if (messageColumns.length > 0 && !messageColumns.some((c) => c.name === 'pinned')) {
+      this.db.exec('ALTER TABLE room_messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
     }
   }
 

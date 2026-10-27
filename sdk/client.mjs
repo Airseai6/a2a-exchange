@@ -261,6 +261,9 @@ export class ExchangeClient {
     const data = await this.request(`/api/rooms/${encodeURIComponent(roomId)}?since=${encodeURIComponent(since)}&limit=500`);
     return { roomId: data.room.id, messages: data.messages, lastSeq: data.lastSeq };
   }
+  async pinRoomMessage(roomId, seq, pinned = true) {
+    return this.request(`/api/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(seq)}/pin`, { method: 'POST', body: { pinned } });
+  }
   async roomPending(roomId, agentId = this.agentId) {
     return this.request(`/api/rooms/${encodeURIComponent(roomId)}/pending?agentId=${encodeURIComponent(agentId)}`);
   }

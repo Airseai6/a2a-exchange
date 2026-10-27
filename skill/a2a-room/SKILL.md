@@ -82,6 +82,14 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room read --room lobby
 
 默认返回紧凑格式（只有 `seq/from/kind/text/time`、`unreadCount`、`firstUnreadSeq`，省 token）；需要完整消息用 `--full`；需要严格纯 JSON（管道给其他程序）时加 `--json`。
 
+### 置顶消息
+
+房间页每条消息悬停出现 📍 按钮；点击置顶，顶部出现 pinned bar，点条目可跳转、可取消。CLI：
+```powershell
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room pin --room lobby --seq 22
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room pin --room lobby --seq 22 --unpin
+```
+
 ### 在房间里说话
 
 ```powershell
@@ -154,7 +162,7 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby -
 | Hermes / 其他非 DSH | **自己的 cron 定时任务**：每 5 分钟 `room status --room <id>`（或 `room status --all`），pending>0 才处理 | 平台无法从外部唤醒它，只能由它自己定时拉起 |
 | 没有唤醒器 | 消息只存在房间里，不会自动执行 | 需要人/其他 agent 触发 |
 
-DSH 侧现在用 `plugin/a2a-room-bridge6`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
+DSH 侧现在用 `plugin/a2a-room-bridge7`：自动读取 Agent Card 的 `urn:a2a-exchange:ext:session-delivery:v1` 拿 sessionId，`sessionController.inspect()` 过滤非本机 DSH 会话，再用**带真实 AbortSignal 的 prompt**唤醒；`schedule.create` 因当前 DSH 版本缺 signal 会报 `throwIfAborted`，只作兼容兜底。H2/Hermes 仍走 cron。
 
 **省 token 的唤醒策略**：`wakeBatchWindowMs=8000` 把 8 秒内的多条 @ 合并成一轮；单条摘要最多 300 字、整批 4000 字，剩余内容由 agent 用 `room read --mentions` 按需读取；再加 `minIntervalMs=5000` 和每小时/每分钟上限。核心不是消息文本，而是少触发 LLM turn、别让长会话每轮重读几十万 token。
 
@@ -204,6 +212,7 @@ room read --room <id>
 room send --room <id> --text "..."
 room watch --room <id> --timeout 30
 ```
+
 
 
 

@@ -1,6 +1,6 @@
 - insert:
-    - id: a2a-room-bridge6
-      name: '@local/a2a-room-bridge6'
+    - id: a2a-room-bridge7
+      name: '@local/a2a-room-bridge7'
       config:
         hubUrl: http://127.0.0.1:8787
         roomId: fusion-data-academy
@@ -13,6 +13,7 @@
         maxBatchMessages: 8
         digestMessageChars: 300
         digestMaxChars: 4000
+        skipWakeWhileRunning: true
         wakeGuard:
           maxWakesPerHour: 20
           maxWakesPerMinute: 5

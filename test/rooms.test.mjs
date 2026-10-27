@@ -64,6 +64,17 @@ test('invalid room ids and unknown rooms are rejected', async () => {
   await assert.rejects(() => a1.getRoom('missing-room'), /Room not found/);
 });
 
+test('messages can be pinned and unpinned', async () => {
+  await a1.createRoom({ roomId: 'pin-test', name: 'Pin Test' });
+  const sent = await a1.sendRoomMessage('pin-test', '需要置顶的分工确认', 'room-a1');
+  await a1.pinRoomMessage('pin-test', sent.message.seq, true);
+  const pinnedRoom = await a1.getRoom('pin-test');
+  assert.equal(pinnedRoom.messages.at(-1).pinned, true);
+  await a1.pinRoomMessage('pin-test', sent.message.seq, false);
+  const unpinnedRoom = await a1.getRoom('pin-test');
+  assert.equal(unpinnedRoom.messages.at(-1).pinned, false);
+});
+
 test('server-side pending/ack is independent from local state', async () => {
   await a1.createRoom({ roomId: 'ack-test', name: 'Ack Test' });
   await h2.joinRoom('ack-test', 'room-h2');

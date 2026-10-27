@@ -73,6 +73,22 @@ export function apply(ctx, config = {}) {
   // Pending per-agent wake batches. A batch waits for a quiet window/limit so
   // several room messages become one LLM turn instead of N turns.
   const pendingWakes = new Map();
+  const skipWakeWhileRunning = config.skipWakeWhileRunning !== false;
+  const sessionRunCache = new Map();
+  async function isSessionRunning(sessionId) {
+    const now = Date.now();
+    const cached = sessionRunCache.get(sessionId);
+    if (cached && now - cached.at < 1500) return cached.running;
+    try {
+      const value = await ctx.sessionController.list({}, new AbortController().signal);
+      const summary = (value?.items ?? []).find((item) => item?.sessionId === sessionId);
+      const running = Boolean(summary?.running);
+      sessionRunCache.set(sessionId, { at: now, running });
+      return running;
+    } catch {
+      return false;
+    }
+  }
   function guardWake(agentId) {
     const now = Date.now();
     const history = (wakeHistory.get(agentId) ?? []).filter((t) => now - t < 60 * 60 * 1000);
@@ -120,9 +136,9 @@ export function apply(ctx, config = {}) {
         if (roomState.bindings[binding.agentId] === undefined) roomState.bindings[binding.agentId] = roomState.lastSeq;
       }
       const names = effectiveBindings().map((b) => `${b.agentId}=${b.sessionId}`).join(',');
-      console.log(`[a2a-room-bridge6] auto-bind ${names || '(none)'}`);
+      console.log(`[a2a-room-bridge7] auto-bind ${names || '(none)'}`);
     } catch (error) {
-      console.error('[a2a-room-bridge6] auto-bind failed:', error?.message);
+      console.error('[a2a-room-bridge7] auto-bind failed:', error?.message);
     }
   }
   const stateFile = String(config.stateFile ?? path.join(process.env.DSH_HOME ?? os.homedir(), 'a2a-room-bridge-state.json'));
@@ -195,9 +211,16 @@ export function apply(ctx, config = {}) {
           '',
           '请只处理与你相关的部分；处理后用 room send 回复 @对方；无关则一句话说明。',
         ].join('\n');
+        if (skipWakeWhileRunning && await isSessionRunning(binding.sessionId)) {
+          // The agent is already in a turn; queueing another prompt would add
+          // another expensive turn. Keep the batch pending and retry after the
+          // current turn settles.
+          console.log(`[a2a-room-bridge7] wake deferred ${binding.agentId}: session running`);
+          continue;
+        }
         const blocked = guardWake(binding.agentId);
         if (blocked) {
-          console.warn(`[a2a-room-bridge6] wake suppressed ${binding.agentId}: ${blocked}; batch kept for retry`);
+          console.warn(`[a2a-room-bridge7] wake suppressed ${binding.agentId}: ${blocked}; batch kept for retry`);
           continue;
         }
         try {
@@ -215,9 +238,9 @@ export function apply(ctx, config = {}) {
           );
           roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(combined.at(-1).seq));
           pendingWakes.delete(binding.agentId);
-          console.log(`[a2a-room-bridge6] prompted wake ${binding.agentId} seq=${combined.at(-1).seq} count=${digest.length}`);
+          console.log(`[a2a-room-bridge7] prompted wake ${binding.agentId} seq=${combined.at(-1).seq} count=${digest.length}`);
         } catch (promptError) {
-          console.error(`[a2a-room-bridge6] prompt wake failed for ${binding.agentId}:`, promptError?.message);
+          console.error(`[a2a-room-bridge7] prompt wake failed for ${binding.agentId}:`, promptError?.message);
           try {
             await ctx.schedule.create(binding.sessionId, {
               title: `A2A 房间 ${roomId} 唤醒`,
@@ -226,10 +249,10 @@ export function apply(ctx, config = {}) {
             });
             roomState.bindings[binding.agentId] = Math.max(Number(roomState.bindings[binding.agentId] ?? 0), Number(combined.at(-1).seq));
             pendingWakes.delete(binding.agentId);
-            console.log(`[a2a-room-bridge6] scheduled wake ${binding.agentId} seq=${combined.at(-1).seq} count=${digest.length}`);
+            console.log(`[a2a-room-bridge7] scheduled wake ${binding.agentId} seq=${combined.at(-1).seq} count=${digest.length}`);
           } catch (error) {
             // Keep the batch (and cursor) for a later retry.
-            console.error(`[a2a-room-bridge6] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
+            console.error(`[a2a-room-bridge7] wake failed for ${binding.agentId}:`, error?.message, error?.stack);
           }
         }
       }
@@ -237,7 +260,7 @@ export function apply(ctx, config = {}) {
       if (Number(latestSeq) > Number(roomState.lastSeq)) roomState.lastSeq = Number(latestSeq);
       saveState(stateFile, state);
     } catch (error) {
-      console.error('[a2a-room-bridge6] tick failed:', error?.message);
+      console.error('[a2a-room-bridge7] tick failed:', error?.message);
     } finally {
       running = false;
     }
@@ -253,8 +276,9 @@ export function apply(ctx, config = {}) {
     clearInterval(timer);
     clearInterval(bindTimer);
   });
-  console.log(`[a2a-room-bridge6] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
+  console.log(`[a2a-room-bridge7] watching ${hubUrl} room=${roomId} autoBind=${autoBind}`);
 }
+
 
 
 

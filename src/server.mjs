@@ -328,6 +328,8 @@ export function createExchangeServer(options = {}) {
             sseWrite(res, { id: event.message.seq, event: 'message', data: event });
           } else if (event.type === 'tasks') {
             sseWrite(res, { event: 'tasks', data: event });
+          } else if (event.type === 'pinned') {
+            sseWrite(res, { event: 'pinned', data: event });
           } else {
             sseWrite(res, { event: 'participants', data: event });
           }
@@ -401,6 +403,13 @@ export function createExchangeServer(options = {}) {
         const roomId = decodeURIComponent(roomHumanMessageMatch[1]);
         const body = await readJsonBody(req);
         return sendJson(res, 201, { message: rooms.postHuman(roomId, body) });
+      }
+      const roomPinMatch = /^\/api\/rooms\/([^/]+)\/messages\/([0-9]+)\/pin$/.exec(path);
+      if (roomPinMatch && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const roomId = decodeURIComponent(roomPinMatch[1]);
+        const body = await readJsonBody(req);
+        return sendJson(res, 200, rooms.pin(roomId, Number(roomPinMatch[2]), body.pinned !== false));
       }
       const roomJoinMatch = /^\/api\/rooms\/([^/]+)\/join$/.exec(path);
       if (roomJoinMatch && req.method === 'POST') {
@@ -617,6 +626,14 @@ function dashboardHtml() {
   .roomhead h2 { margin:0 0 4px; font-size:17px; }
   .roomhead p { margin:0; color:var(--muted); font-size:12px; }
   #messages { flex:1; min-height:0; overflow:auto; padding:18px 20px; display:flex; flex-direction:column; gap:12px; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+  .pinned-bar { margin:8px 20px 0; border:1px solid #35435f; background:#152238; border-radius:9px; padding:7px 10px; display:flex; flex-direction:column; gap:4px; max-height:110px; overflow:auto; }
+  .pinned-bar.hidden { display:none; }
+  .pinned-item { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); cursor:pointer; }
+  .pinned-item .pin-text { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pinned-item .pin-unpin { background:transparent; border:0; color:var(--muted); cursor:pointer; font-size:11px; }
+  .msg.pinned .bubble { border-color:#4a638f; box-shadow:0 0 0 1px #2d4266 inset; }
+  .pin-btn { background:transparent; border:0; color:var(--muted); cursor:pointer; font-size:11px; padding:0 2px; visibility:hidden; }
+  .msg:hover .pin-btn { visibility:visible; }
   #messages::-webkit-scrollbar { width:8px; }
   #messages::-webkit-scrollbar-track { background:transparent; }
   #messages::-webkit-scrollbar-thumb { background:transparent; border-radius:8px; }
@@ -693,6 +710,7 @@ function dashboardHtml() {
   </aside>
   <main>
     <div class="roomhead"><h2 id="roomTitle">协作大厅</h2><p id="roomDesc">正在加载…</p></div>
+    <div id="pinnedBar" class="pinned-bar hidden"></div>
     <div id="messages"></div>
     <div class="error" id="error"></div>
     <div class="composer">
@@ -746,7 +764,7 @@ function dashboardHtml() {
   </div>
 </div>
 <script>
-const state = { rooms: [], room: 'lobby', since: 0, es: null, roomData: null, agents: [], tasks: [] };
+const state = { rooms: [], room: 'lobby', since: 0, es: null, roomData: null, agents: [], tasks: [], messages: [] };
 const $ = (id) => document.getElementById(id);
 function showError(message) { $('error').textContent = message || ''; }
 async function api(path, options) {
@@ -853,7 +871,8 @@ function renderTasks() {
 function renderMessage(message) {
   if (message.type === 'task') return;
   const wrap = document.createElement('div');
-  wrap.className = 'msg ' + (message.sender.kind === 'human' ? 'human' : 'agent');
+  wrap.className = 'msg ' + (message.sender.kind === 'human' ? 'human' : 'agent') + (message.pinned ? ' pinned' : '');
+  wrap.dataset.seq = message.seq;
   const meta = document.createElement('div'); meta.className = 'meta';
   meta.textContent = message.sender.name + ' · ' + new Date(message.time).toLocaleTimeString();
   if (message.type) {
@@ -862,6 +881,12 @@ function renderMessage(message) {
     badge.textContent = typeLabels[message.type] || message.type;
     meta.appendChild(badge);
   }
+  const pinBtn = document.createElement('button');
+  pinBtn.className = 'pin-btn';
+  pinBtn.textContent = message.pinned ? '📌' : '📍';
+  pinBtn.title = message.pinned ? '取消置顶' : '置顶消息';
+  pinBtn.onclick = (event) => { event.stopPropagation(); togglePin(message.seq, !message.pinned); };
+  meta.appendChild(pinBtn);
   const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = message.text;
   wrap.append(meta, bubble);
   if (message.text.length > 240) {
@@ -876,6 +901,35 @@ function renderMessage(message) {
   $('messages').appendChild(wrap);
   $('messages').scrollTop = $('messages').scrollHeight;
 }
+
+async function togglePin(seq, pinned) {
+  try {
+    await api('/api/rooms/' + encodeURIComponent(state.room) + '/messages/' + encodeURIComponent(seq) + '/pin', {
+      method: 'POST',
+      body: JSON.stringify({ pinned }),
+    });
+    await selectRoom(state.room);
+  } catch (error) { showError(error.message); }
+}
+
+function renderPinned() {
+  const bar = $('pinnedBar');
+  const pinned = (state.messages || []).filter((m) => m.pinned && m.type !== 'task');
+  bar.innerHTML = '';
+  bar.classList.toggle('hidden', pinned.length === 0);
+  for (const message of pinned.slice(0, 5)) {
+    const item = document.createElement('div'); item.className = 'pinned-item';
+    const text = document.createElement('span'); text.className = 'pin-text';
+    text.textContent = '📌 ' + message.sender.name + '：' + message.text.replace(/\s+/g, ' ');
+    text.onclick = () => {
+      const target = document.querySelector('#messages .msg[data-seq="' + message.seq + '"]');
+      if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+    const unpin = document.createElement('button'); unpin.className = 'pin-unpin'; unpin.textContent = '取消';
+    unpin.onclick = () => togglePin(message.seq, false);
+    item.append(text, unpin); bar.appendChild(item);
+  }
+}
 function connect() {
   if (state.es) state.es.close();
   const es = new EventSource('/api/rooms/' + encodeURIComponent(state.room) + '/events?since=' + state.since);
@@ -884,7 +938,7 @@ function connect() {
     const data = JSON.parse(event.data);
     const message = data.message;
     if (!message || message.seq <= state.since) return;
-    state.since = message.seq; renderMessage(message); refreshRooms();
+    state.since = message.seq; state.messages.push(message); renderMessage(message); renderPinned(); refreshRooms();
   });
   es.addEventListener('participants', (event) => {
     const data = JSON.parse(event.data); renderParticipants(data.participants);
@@ -895,6 +949,9 @@ function connect() {
     state.tasks = data.tasks || [];
     renderTasks();
   });
+  es.addEventListener('pinned', () => {
+    selectRoom(state.room);
+  });
 }
 async function selectRoom(roomId) {
   state.room = roomId; state.since = 0;
@@ -903,13 +960,15 @@ async function selectRoom(roomId) {
   try {
     const data = await api('/api/rooms/' + encodeURIComponent(roomId));
     state.roomData = data;
+    state.messages = data.messages || [];
     $('roomTitle').textContent = data.room.name;
     $('roomDesc').textContent = data.room.description || '本地协作房间';
-    for (const message of data.messages || []) renderMessage(message);
+    for (const message of state.messages) renderMessage(message);
     state.since = data.lastSeq || 0;
     state.tasks = data.tasks || [];
     renderParticipants(data.participants);
     renderTasks();
+    renderPinned();
     connect();
   } catch (error) { showError(error.message); }
 }
