@@ -41,6 +41,8 @@ const options = {
   room: { type: 'string' },
   since: { type: 'string' },
   limit: { type: 'string' },
+  mentions: { type: 'boolean' },
+  full: { type: 'boolean' },
   'data-dir': { type: 'string' },
   host: { type: 'string' },
   port: { type: 'string' },
@@ -79,9 +81,9 @@ Room commands:
   room list
   room create --room <id> --name <name>
   room join --room <id>                     (agent token from state)
-  room read --room <id> [--since <seq>]
+  room read --room <id> [--since <seq>] [--mentions] [--full]
   room send --room <id> --text "..."
-  room watch --room <id> [--timeout 30]     (first new batch or timeout)
+  room watch --room <id> [--timeout 30] [--mentions]   (first new batch or timeout)
 
 Common options:
   --hub <url>            Hub base URL (default ${DEFAULT_HUB})
@@ -133,6 +135,36 @@ function saveRoomSeen(opts, roomId, seq) {
   const state = loadState(opts) ?? {};
   state.roomSeen = { ...(state.roomSeen ?? {}), [roomId]: Number(seq) || 0 };
   saveState(opts, state);
+}
+
+/** Token-lean room message view (drops duplicated parts/ids). */
+function compactRoomMessage(message) {
+  return {
+    seq: message.seq,
+    from: message.sender?.name ?? 'unknown',
+    kind: message.sender?.kind ?? 'agent',
+    text: message.text,
+    time: message.time,
+  };
+}
+
+function roomView(data, { agentId, agentName, mentionsOnly = false, full = false }) {
+  const all = data.messages ?? [];
+  const matched = mentionsOnly
+    ? all.filter((message) => {
+        const text = String(message.text ?? '');
+        const lower = text.toLowerCase();
+        return lower.includes('@all') ||
+          lower.includes('@' + String(agentId ?? '').toLowerCase()) ||
+          (agentName ? text.includes('@' + agentName) : false);
+      })
+    : all;
+  return {
+    roomId: data.roomId,
+    messages: full ? matched : matched.map(compactRoomMessage),
+    lastSeq: data.lastSeq,
+    skipped: all.length - matched.length,
+  };
 }
 
 function clientFor(opts, { needAgent = false } = {}) {
@@ -434,6 +466,8 @@ export async function main(argv = process.argv.slice(2)) {
         }
         const { client, state } = clientFor(opts, { needAgent: true });
         const agentId = opts.agent || state.agentId;
+        const agentName = state.card?.name;
+        const viewOpts = { agentId, agentName, mentionsOnly: Boolean(opts.mentions), full: Boolean(opts.full) };
         if (sub === 'join') {
           print(await client.joinRoom(roomId, agentId));
         } else if (sub === 'send') {
@@ -442,7 +476,7 @@ export async function main(argv = process.argv.slice(2)) {
           const since = opts.since !== undefined ? Number(opts.since) : (state.roomSeen?.[roomId] ?? 0);
           const data = await client.readRoom(roomId, since);
           saveRoomSeen(opts, roomId, data.lastSeq);
-          print(data);
+          print(roomView({ ...data, roomId }, viewOpts));
         } else if (sub === 'watch') {
           const timeoutMs = Number(opts.timeout ?? 30) * 1000;
           const deadline = Date.now() + timeoutMs;
@@ -451,16 +485,20 @@ export async function main(argv = process.argv.slice(2)) {
           while (Date.now() < deadline) {
             const data = await client.readRoom(roomId, since);
             if (data.messages?.length) {
-              found = data;
-              break;
+              since = data.lastSeq;
+              const view = roomView({ ...data, roomId }, viewOpts);
+              if (view.messages.length) {
+                found = view;
+                break;
+              }
             }
             await sleep(750);
           }
+          saveRoomSeen(opts, roomId, found?.lastSeq ?? since);
           if (found) {
-            saveRoomSeen(opts, roomId, found.lastSeq);
             print(found);
           } else {
-            print({ roomId, messages: [], timeout: true });
+            print({ roomId, messages: [], timeout: true, lastSeq: since });
           }
         } else {
           throw new Error(`Unknown room subcommand: ${sub}`);

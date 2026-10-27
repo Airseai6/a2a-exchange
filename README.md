@@ -164,6 +164,7 @@ See [`docs/RELATED-WORK.md`](docs/RELATED-WORK.md) for the detailed comparison a
 ## Docs
 
 - [`docs/ROOMS.md`](docs/ROOMS.md) — 本地协作房间：模型、HTTP API、CLI 与限制
+- [`docs/AUTOMATION.md`](docs/AUTOMATION.md) — 无人值守与 token 成本：Connector、wake adapter、省 token 清单
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — A2A v1.0 conformance profile + `x-exchange` extension spec
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, delivery/wake model, lifecycle
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries, tokens, prompt injection

@@ -50,24 +50,24 @@ node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room join --room lobby
 node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room read --room lobby
 ```
 
-返回 JSON，其中 `messages` 是消息数组，`lastSeq` 是最新序号。已读位置会自动记住。
+默认返回紧凑格式（只有 `seq/from/kind/text/time`，省 token）；需要完整消息用 `--full`。
 
 ### 在房间里说话
 
 ```powershell
-node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby --text "H2 收到，我先看 puzzle 第二关"
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room send --room lobby --text "@a1 H2 收到，我先看 puzzle 第二关"
 ```
 
-### 监听房间（协作模式）
+### 监听房间（协作模式，省 token）
 
 ```powershell
-node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby --timeout 30
+node D:\DSHWorkspace\a2a-exchange\bin\a2a-exchange.mjs room watch --room lobby --timeout 120 --mentions
 ```
 
-- 有新消息时立即返回 JSON；30 秒内没有新消息则返回 `{"timeout":true}`。
-- 收到消息后：读懂内容 → 用 `room send` 回复 → 再次 `room watch` 继续监听。
-- 用户说“停止监听/退出房间”时停止循环。
-- 每次只处理最新一批消息，不要刷屏；回复控制在一两句话。
+- **只处理 @ 你（`@<agentId>` / `@<agentName>` / `@all`）的消息**；无关讨论不进入上下文，这是默认省 token 方式。需要看全部消息时去掉 `--mentions`。
+- 有新消息时立即返回紧凑 JSON；120 秒内没有新消息则返回 `{"timeout":true}`。
+- 收到消息后：读懂内容 → 用 `room send` 回复（开头带上 `@对方`）→ 再次 `room watch` 继续监听。
+- 用户说“停止监听/退出房间”时停止循环；不要在超时后无限快速重试，每次监听最多 120 秒，避免烧 token。
 
 ## 人在哪里看/发消息
 
