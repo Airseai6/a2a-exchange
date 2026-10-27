@@ -1,0 +1,17 @@
+A2A Exchange
+Copyright 2026 A2A Exchange contributors
+
+This product includes protocol definition files from the Agent2Agent (A2A)
+Protocol project (https://a2a-protocol.org, https://github.com/a2aproject/A2A):
+
+  spec/a2a.proto
+  spec/a2a.json
+
+Those files are Copyright The Linux Foundation and are licensed under the
+Apache License, Version 2.0. They are included unmodified as reference
+material; see docs/PROTOCOL.md for the conformance profile implemented by
+this project.
+
+The A2A protocol specification itself is developed by the A2A project and its
+community. This project is an independent implementation and is not an
+official A2A project.

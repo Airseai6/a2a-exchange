@@ -1,0 +1,11 @@
+﻿node_modules/
+.data/
+.tmp-*
+.a2a-exchange/
+*.log
+.DS_Store
+coverage/
+.env
+.env.*
+tmp/
+*.zstd
