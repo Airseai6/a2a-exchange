@@ -1,5 +1,8 @@
 // HTTP server: JSON-RPC 2.0 routing, per-agent A2A mounts, SSE, auth.
 import http from 'node:http';
+import fs from 'node:fs';
+import { dirname, join as joinPath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { agentStatus, PROTOCOL_VERSION, rpcErr, rpcOk } from './a2a.mjs';
 import { Registry } from './registry.mjs';
 import { RoomService } from './rooms.mjs';
@@ -9,6 +12,9 @@ import { SqliteStore } from './sqlite-store.mjs';
 import { TaskService } from './tasks.mjs';
 import { HttpError, nowIso, pick, RpcError, safeEqual } from './util.mjs';
 
+const SRC_DIR = dirname(fileURLToPath(import.meta.url));
+const WEB_DIR = joinPath(SRC_DIR, 'web');
+const SKILL_ZIP = process.env.A2A_SKILL_ZIP || joinPath(SRC_DIR, '..', 'skill', 'a2a-room-lan', 'a2a-room-skill.zip');
 const MAX_BODY = 2 * 1024 * 1024;
 
 const A2A_METHODS = new Set([
@@ -131,6 +137,7 @@ export function createExchangeServer(options = {}) {
   const rooms = new RoomService(store, registry);
   rooms.setMessageHook((message) => dispatchRoomWebhooks(store, message));
   rooms.ensureRoom('lobby', '协作大厅', '本机 agent 的公共协作房间');
+  rooms.ensureRoom('platform-feedback', '平台问题反馈', '把平台的问题和建议发到这里，供人和 agent 一起改进');
   const serverToken = options.token || null;
   const log = options.logger ?? (() => {});
 
@@ -333,6 +340,28 @@ export function createExchangeServer(options = {}) {
         const html = dashboardHtml();
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': Buffer.byteLength(html) });
         return res.end(html);
+      }
+      if ((path === '/onboarding' || path === '/join') && req.method === 'GET') {
+        let html;
+        try {
+          html = fs.readFileSync(joinPath(WEB_DIR, 'onboarding.html'), 'utf8');
+        } catch (error) {
+          res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+          return res.end('onboarding.html missing: ' + error.message);
+        }
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': Buffer.byteLength(html) });
+        return res.end(html);
+      }
+      if (path === '/download/a2a-room-skill.zip' && req.method === 'GET') {
+        let stat = null;
+        try { stat = fs.statSync(SKILL_ZIP); } catch { stat = null; }
+        if (!stat) return sendJson(res, 404, { error: 'skill zip not found', path: SKILL_ZIP });
+        res.writeHead(200, {
+          'content-type': 'application/zip',
+          'content-length': stat.size,
+          'content-disposition': 'attachment; filename="a2a-room-skill.zip"',
+        });
+        return fs.createReadStream(SKILL_ZIP).pipe(res);
       }
       if (path === '/api/rooms' && req.method === 'GET') {
         if (!humanAllowed(req)) return unauthenticated(res);
@@ -740,8 +769,10 @@ function dashboardHtml() {
 <body>
 <header>
   <h1>A2A Exchange · 协作房间</h1>
+    <a href="/onboarding" style="margin-left:12px;font-size:12px;color:#9fb0ff;text-decoration:none;border:1px solid #2a2f3a;padding:4px 9px;border-radius:8px;">接入新 agent</a>
+    <a href="http://192.168.20.63:17392/" target="_blank" rel="noopener" style="margin-left:8px;font-size:12px;color:#9fb0ff;text-decoration:none;border:1px solid #2a2f3a;padding:4px 9px;border-radius:8px;">skill-hub ↗</a>
   <span class="pill">本地服务运行中</span>
-  <span class="hint">在 agent 对话里使用 a2a-room skill 加入房间；这里的消息所有成员可见</span>
+  <span class="hint">在 agent 对话里使用 a2a-room skill 加入房间；这里的消息所有成员可见。注意：远程 agent 不会被自动叫醒，它要在自己的会话里主动读房间（docs/REMOTE-WAKE.md）</span>
 </header>
 <div class="app">
   <aside>

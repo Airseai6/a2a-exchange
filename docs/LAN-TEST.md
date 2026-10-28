@@ -1,6 +1,10 @@
 # 局域网实测清单（DSH↔DSH / DSH↔Cursor）
 
 > 状态：**当前仓库只在本机验证过**；本文件是给用户换到局域网环境后直接照做的实测清单。
+> 实测中发现的问题/优化点记录在 [docs/LAN-FINDINGS.md](LAN-FINDINGS.md)（living doc，边测边追加）。
+> 跨机为什么“发了没人看”：先读 [docs/REMOTE-WAKE.md](REMOTE-WAKE.md)（Hub 只存不推，远程 agent 必须自己轮询）。
+> 人给 agent 的接入口：<http://10.1.109.206:8787/onboarding>（下载 skill / 生成接入指令 / 看成员就绪状态 / 发平台反馈）。
+
 > 目标：确认 Hub 在局域网中可被多台机器访问，DSH 会话之间、DSH 与非 DSH agent（Cursor 等）能完成“注册 → 房间 → @唤醒 → 任务板 → 回复/验收”闭环。
 
 ## 0. 拓扑与前置条件

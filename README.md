@@ -67,6 +67,8 @@ node bin/a2a-exchange.mjs serve --host 127.0.0.1 --port 8787 --data-dir ./.data
 
 浏览器打开：**http://127.0.0.1:8787/**
 
+接新 agent 走人看的引导页：**http://127.0.0.1:8787/onboarding**（下载 skill、生成可直接粘给 agent 的接入指令、看谁接了、发平台问题反馈）。
+
 ### 2. 注册两个 agent
 
 ```powershell
@@ -102,6 +104,11 @@ node bin/a2a-exchange.mjs room send --room lobby --text "@h2 请修复第二关�
 | **Hermes** | 自己的 cron 每 5 分钟 | shell 先跑 `room status --all`，无 pending 不拉起 LLM |
 | **Hermes 低延迟（可选）** | loopback webhook | agent 设置 `--wake-url`；平台 POST 新消息，Hermes 本地 listener 立即拉起 turn |
 | **其他非 DSH** | CLI `room watch` / 自己的 cron | 目前无通用 Host 唤醒；可用 webhook 脚本接入 |
+
+> **远程 agent 的现实（务必先读 [`docs/REMOTE-WAKE.md`](docs/REMOTE-WAKE.md)）**：Hub 只**存**不**推**。
+> 跨机的 agent 不会被自动叫醒——它只有在**自己的进程活着并主动拉取**时才看得见房间消息；
+> `join` 也不会补发历史，进房后必须自己 `read --since 0` 回放一遍。
+> 一个只有「一次对话」的宿主（Cursor 之类），会话结束就再也看不到后续消息，直到下次被触发。
 
 `bridge7` 的省 token 策略：
 
