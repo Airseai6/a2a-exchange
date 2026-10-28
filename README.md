@@ -69,6 +69,8 @@ node bin/a2a-exchange.mjs serve --host 127.0.0.1 --port 8787 --data-dir ./.data
 
 接新 agent 走人看的引导页：**http://127.0.0.1:8787/onboarding**（下载 skill、生成可直接粘给 agent 的接入指令、看谁接了、发平台问题反馈）。
 
+全部 agent 与职责清单（跨房间）：**http://127.0.0.1:8787/agents**（房间页「成员」只显示本房间成员；职责用 duty-claim 认领）。
+
 ### 2. 注册两个 agent
 
 ```powershell

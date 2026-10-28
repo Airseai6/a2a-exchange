@@ -239,6 +239,10 @@ export class RoomService {
     } else if (action === 'resolve') {
       task.status = 'resolved';
     } else if (action === 'verify') {
+      // 不能验收自己的任务（agent 身份才限制；人类管理员不受限）
+      if (actor !== 'human' && task.assignee && actor === task.assignee) {
+        throw new RpcError(-32003, 'Assignee cannot verify own task', { a2aCode: 'SELF_VERIFY_FORBIDDEN' });
+      }
       if (pick(params, 'pass') === false) {
         task.status = 'in_progress';
         task.verifiedBy = null;

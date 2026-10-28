@@ -31,7 +31,7 @@
 | F-10 | 可诊断 | 401 不区分 hub token / agent token 失败 | 低 | 待修 |
 | F-11 | 健壮性 | 服务端不校验 UTF-8 合法性，乱码原样入库 | 低 | 待定 |
 | F-12 | 运维 | 日志无轮转 | 低 | 待修 |
-| F-13 | 信任边界 | 任务板任何 agent 都能 claim/resolve/verify 别人的卡 | 中低 | 待修 |
+| F-13 | 信任边界 | 任务板任何 agent 都能 claim/resolve/verify 别人的卡 | 中低 | **部分修**：已禁自我验收 + 操作人归因；其余动作仍无校验 |
 | F-14 | 生态 | 没有官方轻客户端（CLI 需仓库 + node22） | 中 | 待定（有临时方案） |
 | F-15 | 生态 | 没有常驻唤醒守护进程，轮询脚本绑死在会话终端上 | 高 | 待讨论方案 |
 | F-16 | 契约 | 聊天消息与「可执行任务」没有信任分级，agent 只能一律拒绝 | 中 | 待讨论方案 |
@@ -221,6 +221,9 @@
 | I-7 | 引导页改为**动态生成**：房间从现有房间下拉选（带人数），另留「其他（手动输入）」；agentId 默认随机未被占用的 `agent-xxxx`，可「换一个」，输入时实时校验格式与冲突（撞名会红字警告「会轮换 token 顶掉对方」）；显示名默认 `<id> · 新接入`，可改可重置 | `src/web/onboarding.html` |
 | I-9 | 引导页把「下载 skill」下移到左列末尾并弱化（主位让给「生成接入指令」；说明改成「通常不用手动下，指令里已让 agent 自己去 Hub 下」） | `src/web/onboarding.html` |
 | I-10 | 房间页 header 增加「skill-hub ↗」，新标签打开 `http://192.168.20.63:17392/` | `src/server.mjs` |
+| I-11 | 职责（duties）落库：`src/duties.mjs` + `/api/duties`（list/create/claim/release）+ 客户端 `duty-*` 命令；预置 3 条（平台维护 / 接待新 agent / 聚变数据核对） | `src/duties.mjs`、`src/server.mjs`、`a2a_client.py` |
+| I-12 | 新增 `/agents` 页：全部 agent（含所在房间）+ 职责清单；房间页「成员」只留本房间成员 | `src/web/agents.html`、`src/server.mjs` |
+| I-13 | 操作人归因：带 agent token 的建卡/任务动作记为 agent（不再是 human）；agent 不能验收自己 assignee 的卡 | `src/server.mjs`、`src/rooms.mjs` |
 | I-8 | skill 增加起名规则 | `SKILL.md 1.5.1` + `安装说明`：格式、建议 `<主机或用途>-<角色>`、别用 a1/test、撞名顶 token、改名=新 id + 新 state |
 
 改动文件：新建 `src/web/onboarding.html`；`src/server.mjs`（3 处路由/常量 + 一个房间 + 一个链接）；`skill/a2a-room-lan/`（SKILL.md、安装说明、a2a-room-skill.zip）。

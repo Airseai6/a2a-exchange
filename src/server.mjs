@@ -7,6 +7,7 @@ import { agentStatus, PROTOCOL_VERSION, rpcErr, rpcOk } from './a2a.mjs';
 import { Registry } from './registry.mjs';
 import { RoomService } from './rooms.mjs';
 import { attachHeartbeat, sseHead, sseWrite, serveAgentEvents, serveTaskStream } from './sse.mjs';
+import { DutyService } from './duties.mjs';
 import { ExchangeStore } from './store.mjs';
 import { SqliteStore } from './sqlite-store.mjs';
 import { TaskService } from './tasks.mjs';
@@ -126,7 +127,8 @@ async function dispatchRoomWebhooks(store, message) {
 
 export function createExchangeServer(options = {}) {
   const StoreCtor = options.store === 'json' ? ExchangeStore : SqliteStore;
-  const store = new StoreCtor({ dataDir: options.dataDir ?? './.data' }).load();
+  const dataDir = options.dataDir ?? './.data';
+  const store = new StoreCtor({ dataDir }).load();
   const registry = new Registry(store, {
     syncWaitMs: options.syncWaitMs ?? 20000,
     hubVersion: options.version ?? '0.1.0',
@@ -135,6 +137,7 @@ export function createExchangeServer(options = {}) {
   });
   const tasks = new TaskService(store, registry);
   const rooms = new RoomService(store, registry);
+  const duties = new DutyService({ dataDir });
   rooms.setMessageHook((message) => dispatchRoomWebhooks(store, message));
   rooms.ensureRoom('lobby', '协作大厅', '本机 agent 的公共协作房间');
   rooms.ensureRoom('platform-feedback', '平台问题反馈', '把平台的问题和建议发到这里，供人和 agent 一起改进');
@@ -152,6 +155,13 @@ export function createExchangeServer(options = {}) {
       return registry.verifyAgentToken(agentId, token);
     },
   };
+
+  /** 带有效 agent token 的请求记为该 agent；否则视为人类操作。 */
+  function resolveActor(req, body) {
+    const agentId = String(pick(body ?? {}, 'agentId', 'agent_id') ?? '');
+    if (agentId && checks.agent(req, agentId)) return agentId;
+    return 'human';
+  }
 
   function unauthenticated(res) {
     sendJson(res, 401, rpcErr(null, -32001, 'Unauthenticated', { a2aCode: 'UNAUTHENTICATED' }));
@@ -363,6 +373,25 @@ export function createExchangeServer(options = {}) {
         });
         return fs.createReadStream(SKILL_ZIP).pipe(res);
       }
+      if (path === '/api/duties' && req.method === 'GET') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        return sendJson(res, 200, { duties: duties.list(Object.fromEntries(new URL(req.url, 'http://x').searchParams)) });
+      }
+      if (path === '/api/duties' && req.method === 'POST') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const body = await readJsonBody(req);
+        return sendJson(res, 201, { duty: duties.create(body, 'human') });
+      }
+      const dutyActionMatch = /^\/api\/duties\/([^/]+)\/(claim|release)$/.exec(path);
+      if (dutyActionMatch && req.method === 'POST') {
+        if (!checks.server(req)) return unauthenticated(res);
+        const body = await readJsonBody(req);
+        const agentId = String(pick(body, 'agentId', 'agent_id') ?? '');
+        if (!agentId || !checks.agent(req, agentId)) return unauthenticated(res);
+        const dutyId = decodeURIComponent(dutyActionMatch[1]);
+        const action = dutyActionMatch[2];
+        return sendJson(res, 200, { duty: action === 'claim' ? duties.claim(dutyId, agentId) : duties.release(dutyId, agentId) });
+      }
       if (path === '/api/rooms' && req.method === 'GET') {
         if (!humanAllowed(req)) return unauthenticated(res);
         return sendJson(res, 200, { rooms: rooms.listRooms() });
@@ -436,7 +465,7 @@ export function createExchangeServer(options = {}) {
       if (roomTasksMatch && req.method === 'POST') {
         if (!humanAllowed(req)) return unauthenticated(res);
         const body = await readJsonBody(req);
-        return sendJson(res, 201, { task: rooms.createTask(decodeURIComponent(roomTasksMatch[1]), body, 'human') });
+        return sendJson(res, 201, { task: rooms.createTask(decodeURIComponent(roomTasksMatch[1]), body, resolveActor(req, body)) });
       }
       const roomTaskActionMatch = /^\/api\/rooms\/([^/]+)\/tasks\/([^/]+)\/([^/]+)$/.exec(path);
       if (roomTaskActionMatch && req.method === 'POST') {
@@ -448,7 +477,7 @@ export function createExchangeServer(options = {}) {
             decodeURIComponent(roomTaskActionMatch[2]),
             decodeURIComponent(roomTaskActionMatch[3]),
             body,
-            'human',
+            resolveActor(req, body),
           ),
         });
       }
@@ -816,10 +845,11 @@ function dashboardHtml() {
       <div id="tasks"></div>
     </div>
     <div id="membersPanel" class="hidden">
-      <div class="label">已注册 agent</div>
-      <div id="agents"></div>
-      <div class="label" style="margin-top:18px">房间成员</div>
+      <div class="label">房间成员</div>
       <div id="members"></div>
+      <a href="/agents" target="_blank" rel="noopener" style="display:block;margin-top:16px;font-size:12px;color:#9fb0ff;text-decoration:none;border:1px solid #2a2f3a;padding:7px 10px;border-radius:8px;text-align:center;">全部 agent 与职责 →</a>
+      <div class="label" style="margin-top:18px">管理</div>
+      <button class="manage" id="openManageBtn">房间设置 / 邀请 / 踢人</button>
     </div>
   </aside>
 </div>
@@ -873,7 +903,8 @@ async function refreshAgents() {
   try {
     const data = await api('/api/agents');
     state.agents = data.agents || [];
-    const box = $('agents'); box.innerHTML = '';
+    const box = $('agents'); if (!box) return;
+    box.innerHTML = '';
     for (const agent of state.agents) {
       const row = document.createElement('div'); row.className = 'agent-row';
       const dot = document.createElement('span'); dot.className = 'dot ' + agent.status;
@@ -1060,6 +1091,7 @@ $('send').onclick = sendMessage;
 $('input').addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }
 });
+$('openManageBtn').onclick = () => openManage();
 $('newRoom').onclick = async () => {
   const id = (prompt('房间 id（小写字母/数字/-）') || '').trim();
   if (!id) return;

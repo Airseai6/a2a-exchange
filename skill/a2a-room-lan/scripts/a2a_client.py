@@ -316,6 +316,41 @@ def cmd_doctor(args, state):
     return result
 
 
+def cmd_duty_list(args, state):
+    query = "?roomId=" + urllib.parse.quote(args.room) if args.room else ""
+    payload = _api(state, "GET", "/api/duties" + query)
+    duties = []
+    for duty in payload.get("duties") or []:
+        duties.append({k: duty.get(k) for k in
+                       ("dutyId", "title", "roomId", "status", "claimedBy", "scopes")})
+    return {"duties": duties}
+
+
+def cmd_duty_claim(args, state):
+    agent_id = require_agent(state)
+    payload = _api(state, "POST", "/api/duties/%s/claim" % urllib.parse.quote(args.duty),
+                   {"agentId": agent_id})
+    duty = payload.get("duty") or {}
+    return {"ok": True, "dutyId": duty.get("dutyId"), "claimedBy": duty.get("claimedBy"),
+            "status": duty.get("status")}
+
+
+def cmd_duty_release(args, state):
+    agent_id = require_agent(state)
+    payload = _api(state, "POST", "/api/duties/%s/release" % urllib.parse.quote(args.duty),
+                   {"agentId": agent_id})
+    duty = payload.get("duty") or {}
+    return {"ok": True, "dutyId": duty.get("dutyId"), "status": duty.get("status")}
+
+
+def cmd_duty_create(args, state):
+    body = {"title": args.title, "description": args.description or "",
+            "roomId": args.room or "lobby"}
+    payload = _api(state, "POST", "/api/duties", body)
+    duty = payload.get("duty") or {}
+    return {"ok": True, "dutyId": duty.get("dutyId"), "title": duty.get("title")}
+
+
 def cmd_heartbeat(args, state):
     agent_id = require_agent(state)
     hub = state.get("hub") or DEFAULT_HUB
@@ -332,7 +367,7 @@ def cmd_tasks(args, state):
 
 
 def cmd_task_create(args, state):
-    body = {"title": args.title, "detail": args.detail or "", "acceptance": args.acceptance or "",
+    body = {"agentId": require_agent(state), "title": args.title, "detail": args.detail or "", "acceptance": args.acceptance or "",
             "assignee": args.assignee, "verifier": args.verifier,
             "branch": args.branch, "commit": args.commit, "summary": args.summary}
     body = {k: v for k, v in body.items() if v}
@@ -343,7 +378,7 @@ def cmd_task_create(args, state):
 
 
 def cmd_task_action(args, state):
-    body = {}
+    body = {"agentId": require_agent(state)}
     if args.note:
         body["note"] = args.note
     if args.pass_flag:
@@ -421,6 +456,24 @@ def build_parser():
     p = sub.add_parser("doctor", help="连接自检：Hub 可达 / token 有效 / 房间可用")
     p.add_argument("--room", default=None, help="可选：顺便检查这个房间")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("duty-list", help="职责清单（含谁认领了）")
+    p.add_argument("--room", default=None)
+    p.set_defaults(func=cmd_duty_list)
+
+    p = sub.add_parser("duty-claim", help="认领职责")
+    p.add_argument("--duty", required=True)
+    p.set_defaults(func=cmd_duty_claim)
+
+    p = sub.add_parser("duty-release", help="释放职责")
+    p.add_argument("--duty", required=True)
+    p.set_defaults(func=cmd_duty_release)
+
+    p = sub.add_parser("duty-create", help="新建职责（人类/admin）")
+    p.add_argument("--title", required=True)
+    p.add_argument("--description", default=None)
+    p.add_argument("--room", default=None)
+    p.set_defaults(func=cmd_duty_create)
 
     p = sub.add_parser("heartbeat", help="心跳，保持在线")
     p.set_defaults(func=cmd_heartbeat)

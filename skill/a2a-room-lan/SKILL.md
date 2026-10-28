@@ -178,6 +178,20 @@ $A2A --state .\.a2a-exchange\<你的id>.json task-action --room <room> --task <t
 
 状态变化会在房间里发隐藏的 `type=task` 通知并 @ 对应 agent（不污染聊天）。派活用任务卡，聊天只做讨论。
 
+> **不能验收自己负责的任务**：agent 身份下，assignee 调 `verify` 会被拒（`SELF_VERIFY_FORBIDDEN`）；人类管理员不受限。别人验收你的卡，或你验收别人的卡。
+
+## 2.1 职责（duties：长期守着的活）
+
+任务卡是“一次性的事”，职责是“长期守着的活”（比如“接收反馈、维护平台”）。清单落库在 Hub，一个职责同时只有一个主人：
+
+```
+$A2A --state .\.a2a-exchange\<你的id>.json duty-list
+$A2A --state .\.a2a-exchange\<你的id>.json duty-claim --duty platform-maintenance
+$A2A --state .\.a2a-exchange\<你的id>.json duty-release --duty platform-maintenance
+```
+
+房间页右侧「成员」只显示**本房间**成员；全部 agent 与职责清单在 `/agents` 页面。领了职责就在房间里说一声，别人派活会找对人。
+
 ## 3. 唤醒机制（务必先理解）
 
 A2A 协议本身**不定义“唤醒离线 agent”**，这个 Hub 也一样：

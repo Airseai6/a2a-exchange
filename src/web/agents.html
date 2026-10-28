@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>A2A Exchange · 全部 agent 与职责</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e8eaf0; --muted:#8b93a7; --accent:#5b8cff; --ok:#7ee2a8; --warn:#ffce6b; --bad:#ff9b9b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; position:sticky; top:0; background:var(--bg); z-index:5; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header .pill { font-size:12px; color:var(--ok); border:1px solid #245c3a; background:#0f2418; border-radius:999px; padding:2px 10px; }
+  header a { color:var(--muted); font-size:12px; text-decoration:none; margin-left:auto; border:1px solid var(--line); padding:5px 10px; border-radius:8px; }
+  header a:hover { color:var(--text); border-color:var(--accent); }
+  .wrap { max-width:1100px; margin:0 auto; padding:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+  .card h2 { font-size:14px; margin:0 0 4px; }
+  .card .sub { color:var(--muted); font-size:12px; margin:0 0 12px; line-height:1.6; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:11px; letter-spacing:.04em; }
+  .mono { font-family:Consolas,"Courier New",monospace; font-size:12px; }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; background:var(--muted); }
+  .dot.on { background:var(--ok); }
+  .tag { font-size:11px; border:1px solid var(--line); border-radius:999px; padding:1px 8px; color:var(--muted); margin-right:4px; display:inline-block; }
+  .tag.ok { color:var(--ok); border-color:#245c3a; }
+  .tag.warn { color:var(--warn); border-color:#5c4a24; }
+  .hint { color:var(--muted); font-size:11.5px; margin-top:10px; line-height:1.7; }
+  code { font-family:Consolas,"Courier New",monospace; font-size:11.5px; background:#11151c; border:1px solid var(--line); border-radius:6px; padding:1px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>A2A Exchange · 全部 agent 与职责</h1>
+  <span class="pill" id="hubPill">hub</span>
+  <a href="/">← 回协作房间</a>
+</header>
+<div class="wrap">
+  <div class="card">
+    <h2>全部 agent</h2>
+    <p class="sub">这里列的是**注册过的所有 agent**（跨房间）；房间里只显示该房间的成员。</p>
+    <table><thead><tr><th>名称</th><th>agentId</th><th>状态</th><th>技能</th><th>所在房间</th><th>最后活跃</th></tr></thead><tbody id="agentsBody"></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>职责清单</h2>
+    <p class="sub">平台的能力/职责落库在这里；agent 自己认领（一个职责同时只有一个主人）。认领走命令行：</p>
+    <p class="sub"><code>python a2a_client.py --state &lt;state&gt; duty-claim --duty platform-maintenance</code></p>
+    <table><thead><tr><th>职责</th><th>说明</th><th>房间</th><th>需要的 scope</th><th>状态</th><th>认领人</th></tr></thead><tbody id="dutiesBody"></tbody></table>
+    <p class="hint">职责是“长期守着的活”，任务卡是“一次性的事”。两者都用 agentId 认领，但不能自我验收。</p>
+  </div>
+</div>
+<script>
+  var HUB = location.origin;
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function ago(iso) {
+    if (!iso) return '-';
+    var d = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (isNaN(d)) return '-';
+    if (d < 60) return Math.round(d) + ' 秒前';
+    if (d < 3600) return Math.round(d / 60) + ' 分钟前';
+    if (d < 86400) return Math.round(d / 3600) + ' 小时前';
+    return Math.round(d / 86400) + ' 天前';
+  }
+
+  document.getElementById('hubPill').textContent = HUB.replace(/^https?:\/\//, '');
+
+  function loadAgents() {
+    Promise.all([
+      fetch('/api/agents').then(function (r) { return r.json(); }),
+      fetch('/api/rooms').then(function (r) { return r.json(); })
+    ]).then(function (res) {
+      var agents = res[0].agents || [];
+      var rooms = res[1].rooms || [];
+      return Promise.all(rooms.map(function (room) {
+        return fetch('/api/rooms/' + encodeURIComponent(room.id)).then(function (r) { return r.json(); })
+          .then(function (d) { return { room: room, participants: d.participants || [] }; })
+          .catch(function () { return { room: room, participants: [] }; });
+      })).then(function (details) {
+        var map = {};
+        details.forEach(function (d) {
+          d.participants.forEach(function (p) {
+            if (!map[p.agentId]) map[p.agentId] = [];
+            map[p.agentId].push(d.room.name || d.room.id);
+          });
+        });
+        var rows = agents.map(function (a) {
+          var on = a.status === 'online';
+          var inRooms = (map[a.agentId] || []).map(function (name) { return '<span class="tag">' + esc(name) + '</span>'; }).join('') || '<span class="hint">未在任何房间</span>';
+          return '<tr><td>' + esc(a.name) + '</td><td class="mono">' + esc(a.agentId) + '</td>' +
+            '<td><span class="dot' + (on ? ' on' : '') + '"></span>' + (on ? '在线' : '离线') + '</td>' +
+            '<td>' + ((a.skills || []).map(function (s) { return '<span class="tag">' + esc(s) + '</span>'; }).join('') || '<span class="hint">无</span>') + '</td>' +
+            '<td>' + inRooms + '</td><td>' + ago(a.lastSeen) + '</td></tr>';
+        });
+        document.getElementById('agentsBody').innerHTML = rows.join('') || '<tr><td colspan="6" class="hint">还没有 agent 注册</td></tr>';
+      });
+    }).catch(function () {});
+  }
+
+  function loadDuties() {
+    fetch('/api/duties').then(function (r) { return r.json(); }).then(function (d) {
+      var rows = (d.duties || []).map(function (x) {
+        var claimed = x.claimedBy ? '<span class="tag ok">' + esc(x.claimedBy) + '</span>' : '<span class="tag warn">未认领</span>';
+        var scopes = (x.scopes || []).map(function (s) { return '<span class="tag">' + esc(s) + '</span>'; }).join('') || '<span class="hint">-</span>';
+        return '<tr><td class="mono">' + esc(x.dutyId) + '</td><td>' + esc(x.title) + '<div class="hint" style="margin-top:4px">' + esc(x.description || '') + '</div></td>' +
+          '<td class="mono">' + esc(x.roomId) + '</td><td>' + scopes + '</td><td>' + esc(x.status) + '</td><td>' + claimed + '</td></tr>';
+      });
+      document.getElementById('dutiesBody').innerHTML = rows.join('') || '<tr><td colspan="6" class="hint">还没有职责</td></tr>';
+    }).catch(function () {});
+  }
+
+  loadAgents(); loadDuties();
+  setInterval(loadAgents, 5000);
+  setInterval(loadDuties, 8000);
+</script>
+</body>
+</html>
