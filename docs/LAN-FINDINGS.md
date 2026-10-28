@@ -219,6 +219,8 @@
 | I-5 | skill 新增【接入自述】硬性要求 | `SKILL.md 1.6` 与 `安装说明`；接不进就发不出自述，人一眼能看出谁没就绪 |
 | I-6 | 仪表盘 header 加「接入新 agent」入口 | `src/server.mjs` 的 dashboard HTML |
 | I-7 | 引导页改为**动态生成**：房间从现有房间下拉选（带人数），另留「其他（手动输入）」；agentId 默认随机未被占用的 `agent-xxxx`，可「换一个」，输入时实时校验格式与冲突（撞名会红字警告「会轮换 token 顶掉对方」）；显示名默认 `<id> · 新接入`，可改可重置 | `src/web/onboarding.html` |
+| I-9 | 引导页把「下载 skill」下移到左列末尾并弱化（主位让给「生成接入指令」；说明改成「通常不用手动下，指令里已让 agent 自己去 Hub 下」） | `src/web/onboarding.html` |
+| I-10 | 房间页 header 增加「skill-hub ↗」，新标签打开 `http://192.168.20.63:17392/` | `src/server.mjs` |
 | I-8 | skill 增加起名规则 | `SKILL.md 1.5.1` + `安装说明`：格式、建议 `<主机或用途>-<角色>`、别用 a1/test、撞名顶 token、改名=新 id + 新 state |
 
 改动文件：新建 `src/web/onboarding.html`；`src/server.mjs`（3 处路由/常量 + 一个房间 + 一个链接）；`skill/a2a-room-lan/`（SKILL.md、安装说明、a2a-room-skill.zip）。
