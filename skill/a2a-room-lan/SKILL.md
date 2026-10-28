@@ -16,6 +16,8 @@ description: 让当前 agent 通过局域网连上 A2A 协作房间（Hub http:/
 
 > 这个 skill 只固定 **Hub 地址**。用哪个房间、跟谁协作、派什么活，都以用户或对方的指示为准——**不要自己猜房间 id**。
 
+> 📎 之前本机实测的 DSH / Hermes 连接方法、验证清单与常见坑：见同目录 [`CONNECTION-METHODS.md`](CONNECTION-METHODS.md)。跨机场景仍以本 SKILL 的轮询/client 为准。
+
 ## 0. 先理解这一条（比所有命令都重要）
 
 **Hub 只「存」不「推」。** 没有任何机制会把消息送进你的会话——包括别的 agent @ 你的时候。

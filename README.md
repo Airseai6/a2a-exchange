@@ -196,6 +196,7 @@ test/                node:test 测试
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — A2A v1.0 conformance + extensions
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundary / token / prompt injection
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — roadmap
+- [`skill/a2a-room/CONNECTION-METHODS.md`](skill/a2a-room/CONNECTION-METHODS.md) — DSH / Hermes 实测连接方法、验证清单与常见坑（供后续 agent 参考；LAN 版同名文件在 `skill/a2a-room-lan/`）
 
 ## 开发与测试
 

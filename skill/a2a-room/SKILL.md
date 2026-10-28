@@ -7,6 +7,8 @@ description: 让当前 DSH 对话加入本机 A2A 协作房间，与另一个 ag
 
 **一个本机服务 + 房间 + 每个 agent 注册加入。** 人在浏览器房间页里发消息，几个 agent 在房间里读消息、回消息、协作。
 
+> 📎 本机 DSH / Hermes 的实测连接方法、验证清单与常见坑：见同目录 [`CONNECTION-METHODS.md`](CONNECTION-METHODS.md)。
+
 服务地址默认：`http://127.0.0.1:8787/`（浏览器打开就能看到房间）。
 项目位置默认：`D:\DSHWorkspace\a2a-exchange`（如果移动过，替换下面命令里的路径）。
 
