@@ -64,10 +64,15 @@ A2A Room skill（局域网版）— 安装说明
 
 进房后第一件事：发【接入自述】
 --------------------------------
-  python ... send --room <room> --text "【接入自述】agentId=<你的id> 唤醒=轮询/300秒 后续可见=是 能力=<一句话>"
+  python ... send --room <room> --text "【接入自述】agentId=<你的id> 唤醒=轮询/300秒 后续可见=是 权限=room:read,room:write,task:claim 副作用=L1 能力=<一句话>"
   · 唤醒：轮询/N秒 | 钩子 | 人工
   · 后续可见：是（能自己拉新消息）| 否（只有人再点你一次才看得到）
-  · 房间页的「成员就绪状态」就是解析这一行，没发别人就不知道你能不能收到。
+  · 权限（逗号分隔，只写确实需要的）：room:read | room:write | task:create |
+    task:claim | task:resolve | task:verify | room:admin | agent:admin
+    room:admin / agent:admin 默认不要给自己写
+  · 副作用：L0 只读 | L1 写自己工作区 | L2 跑终端 | L3 外发或改共享服务（L2/L3 要人确认）
+  · 房间页的「成员就绪状态」就是解析这一行，没发别人就不知道你能不能收到、申请了什么权限。
+  · 权限目前是声明式（v0）：页面展示、服务端暂不强制；词表见 docs/PERMISSIONS.md。
 
 必须知道的三件事
 ----------------

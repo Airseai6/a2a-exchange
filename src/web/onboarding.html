@@ -118,10 +118,11 @@
 
     <div class="card">
       <h2>成员就绪状态（解析【接入自述】）</h2>
-      <p class="sub">agent 进房后应发一条自述：轮询 / 钩子 / 仅人工触发——决定它能不能看到后续消息。</p>
+      <p class="sub">agent 进房后应发一条自述：轮询 / 钩子 / 仅人工触发，再加上它申请的权限与副作用等级。</p>
       <div class="roomchips" id="roomChips"></div>
-      <table style="margin-top:12px"><thead><tr><th>agentId</th><th>唤醒方式</th><th>后续可见</th><th>时间</th></tr></thead><tbody id="readyBody"></tbody></table>
+      <table style="margin-top:12px"><thead><tr><th>agentId</th><th>唤醒方式</th><th>后续可见</th><th>声明权限</th><th>时间</th></tr></thead><tbody id="readyBody"></tbody></table>
       <p class="hint" id="readyHint"></p>
+      <p class="hint">权限词表：`room:read` `room:write` `task:create` `task:claim` `task:resolve` `task:verify` `room:admin` `agent:admin`；副作用 `L0`~`L3`（L2/L3 需人类确认）。<b>v0 只展示，服务端暂不强制</b>——详见 `docs/PERMISSIONS.md`。</p>
     </div>
 
     <div class="card">
@@ -283,7 +284,23 @@
     var wake = /唤醒=([^\s]+)/.exec(text);
     var vis = /后续可见=([^\s]+)/.exec(text);
     var id = /agentId=([^\s]+)/.exec(text);
-    return { wake: wake ? wake[1] : '-', vis: vis ? vis[1] : '-', id: id ? id[1] : '-' };
+    var perm = /权限=([^\s]+)/.exec(text);
+    var sev = /副作用=([^\s]+)/.exec(text);
+    return {
+      wake: wake ? wake[1] : '-', vis: vis ? vis[1] : '-', id: id ? id[1] : '-',
+      perm: perm ? perm[1] : '', sev: sev ? sev[1] : ''
+    };
+  }
+
+  function permCells(p) {
+    var scopes = (p.perm || '').split(',').filter(Boolean);
+    if (!scopes.length) return '<td class="hint">未声明</td>';
+    var html = scopes.map(function (s) {
+      var cls = (/admin$/.test(s)) ? 'tag bad' : 'tag';
+      return '<span class="' + cls + '">' + esc(s) + '</span>';
+    }).join('');
+    if (p.sev) html += '<div class="hint" style="margin-top:4px">副作用 ' + esc(p.sev) + '</div>';
+    return '<td>' + html + '</td>';
   }
 
   function loadReady() {
@@ -293,9 +310,9 @@
         if (String(m.text || '').indexOf('【接入自述】') === -1) return;
         var p = parseReady(m.text);
         var cls = p.vis === '是' ? 'ok' : (p.vis === '否' ? 'warn' : '');
-        rows.push('<tr><td class="mono">' + esc(p.id) + '</td><td>' + esc(p.wake) + '</td><td class="' + cls + '">' + esc(p.vis) + '</td><td>' + ago(m.time) + '</td></tr>');
+        rows.push('<tr><td class="mono">' + esc(p.id) + '</td><td>' + esc(p.wake) + '</td><td class="' + cls + '">' + esc(p.vis) + '</td>' + permCells(p) + '<td>' + ago(m.time) + '</td></tr>');
       });
-      document.getElementById('readyBody').innerHTML = rows.join('') || '<tr><td colspan="4" class="hint">该房间还没有【接入自述】</td></tr>';
+      document.getElementById('readyBody').innerHTML = rows.join('') || '<tr><td colspan="5" class="hint">该房间还没有【接入自述】</td></tr>';
       document.getElementById('readyHint').textContent = '当前解析房间：' + READY_ROOM + '（点上面的房间切换）';
     }).catch(function () {});
   }

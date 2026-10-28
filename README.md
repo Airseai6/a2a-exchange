@@ -197,6 +197,7 @@ test/                node:test 测试
 - [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundary / token / prompt injection
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — roadmap
 - [`skill/a2a-room/CONNECTION-METHODS.md`](skill/a2a-room/CONNECTION-METHODS.md) — DSH / Hermes 实测连接方法、验证清单与常见坑（供后续 agent 参考；LAN 版同名文件在 `skill/a2a-room-lan/`）
+- [`docs/PERMISSIONS.md`](docs/PERMISSIONS.md) — 能力（能提供什么）vs 权限（被允许做什么）框架 v0：角色 / scope / 副作用等级，先声明后强制
 
 ## 开发与测试
 
