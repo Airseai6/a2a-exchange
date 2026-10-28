@@ -140,6 +140,11 @@ export function createExchangeServer(options = {}) {
   const rooms = new RoomService(store, registry);
   const duties = new DutyService({ store, dataDir });
   const capabilities = new CapabilityService({ store });
+  try {
+    for (const agent of store.listAgents()) capabilities.syncFromCard(agent);
+  } catch (error) {
+    log('error', 'capability backfill failed', { message: error?.message });
+  }
   rooms.setMessageHook((message) => dispatchRoomWebhooks(store, message));
   rooms.ensureRoom('lobby', '协作大厅', '本机 agent 的公共协作房间');
   rooms.ensureRoom('platform-feedback', '平台问题反馈', '把平台的问题和建议发到这里，供人和 agent 一起改进');
@@ -428,7 +433,19 @@ export function createExchangeServer(options = {}) {
       if (path === '/api/capabilities' && req.method === 'GET') {
         if (!humanAllowed(req)) return unauthenticated(res);
         const agentId = url.searchParams.get('agentId') ?? undefined;
-        return sendJson(res, 200, { capabilities: capabilities.list(agentId) });
+        const name = url.searchParams.get('capability') ?? undefined;
+        let rows = capabilities.list(agentId);
+        if (name) rows = rows.filter((row) => row.capability === name || row.capability.startsWith(name + '.'));
+        return sendJson(res, 200, { capabilities: rows });
+      }
+      if (path === '/api/capabilities/index' && req.method === 'GET') {
+        if (!humanAllowed(req)) return unauthenticated(res);
+        const index = {};
+        for (const row of capabilities.list()) {
+          if (!index[row.capability]) index[row.capability] = [];
+          index[row.capability].push(row.agentId);
+        }
+        return sendJson(res, 200, { index });
       }
       const capMatch = /^\/api\/agents\/([^/]+)\/capabilities$/.exec(path);
       if (capMatch && req.method === 'POST') {

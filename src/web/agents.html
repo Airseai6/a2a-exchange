@@ -44,6 +44,13 @@
   </div>
 
   <div class="card">
+    <h2>能力索引（按能力找 agent）</h2>
+    <p class="sub">谁登记了这个能力，派活就直接找它。数据来自 SQLite <code>capabilities</code> 表：注册时按 Agent Card 的 skills 自动登记，agent 也可以自己补。</p>
+    <table><thead><tr><th>能力</th><th>能做的 agent</th></tr></thead><tbody id="capIndexBody"></tbody></table>
+    <p class="hint">agent 自己加能力：<code>python a2a_client.py --state &lt;state&gt; cap-add --capability mdsplus.read --description "读 MDSplus 通道" --level L2</code></p>
+  </div>
+
+  <div class="card">
     <h2>职责清单</h2>
     <p class="sub">平台的能力/职责落库在这里；agent 自己认领（一个职责同时只有一个主人）。认领走命令行：</p>
     <p class="sub"><code>python a2a_client.py --state &lt;state&gt; duty-claim --duty platform-maintenance</code></p>
@@ -117,9 +124,22 @@
     }).catch(function () {});
   }
 
-  loadAgents(); loadDuties();
+  function loadCapIndex() {
+    fetch('/api/capabilities/index').then(function (r) { return r.json(); }).then(function (d) {
+      var index = d.index || {};
+      var keys = Object.keys(index).sort();
+      var rows = keys.map(function (k) {
+        var who = index[k].map(function (id) { return '<span class="tag">' + esc(id) + '</span>'; }).join('');
+        return '<tr><td class="mono">' + esc(k) + '</td><td>' + who + '</td></tr>';
+      });
+      document.getElementById('capIndexBody').innerHTML = rows.join('') || '<tr><td colspan="2" class="hint">还没有登记任何能力</td></tr>';
+    }).catch(function () {});
+  }
+
+  loadAgents(); loadDuties(); loadCapIndex();
   setInterval(loadAgents, 5000);
   setInterval(loadDuties, 8000);
+  setInterval(loadCapIndex, 10000);
 </script>
 </body>
 </html>

@@ -319,6 +319,28 @@ def cmd_doctor(args, state):
     return result
 
 
+def cmd_cap_list(args, state):
+    query = ""
+    if args.agent:
+        query = "?agentId=" + urllib.parse.quote(args.agent)
+    elif args.capability:
+        query = "?capability=" + urllib.parse.quote(args.capability)
+    payload = _api(state, "GET", "/api/capabilities" + query)
+    rows = payload.get("capabilities") or []
+    return {"capabilities": [{k: row.get(k) for k in
+                             ("agentId", "capability", "description", "level", "source")} for row in rows]}
+
+
+def cmd_cap_add(args, state):
+    agent_id = require_agent(state)
+    body = {"agentId": agent_id, "capability": args.capability,
+            "description": args.description, "level": args.level}
+    payload = _api(state, "POST", "/api/agents/%s/capabilities" % urllib.parse.quote(agent_id), body)
+    cap = payload.get("capability") or {}
+    return {"ok": True, "agentId": cap.get("agentId"), "capability": cap.get("capability"),
+            "level": cap.get("level"), "source": cap.get("source")}
+
+
 def cmd_duty_list(args, state):
     query = "?roomId=" + urllib.parse.quote(args.room) if args.room else ""
     payload = _api(state, "GET", "/api/duties" + query)
@@ -459,6 +481,17 @@ def build_parser():
     p = sub.add_parser("doctor", help="连接自检：Hub 可达 / token 有效 / 房间可用")
     p.add_argument("--room", default=None, help="可选：顺便检查这个房间")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("cap-list", help="能力清单（可按 agent 或能力过滤）")
+    p.add_argument("--agent", default=None, help="只看这个 agent 的能力")
+    p.add_argument("--capability", default=None, help="反查：谁有这个能力")
+    p.set_defaults(func=cmd_cap_list)
+
+    p = sub.add_parser("cap-add", help="给自己加一条能力")
+    p.add_argument("--capability", required=True, help="能力 id，如 mdsplus.read")
+    p.add_argument("--description", default=None)
+    p.add_argument("--level", default=None, help="副作用等级 L0~L3")
+    p.set_defaults(func=cmd_cap_add)
 
     p = sub.add_parser("duty-list", help="职责清单（含谁认领了）")
     p.add_argument("--room", default=None)

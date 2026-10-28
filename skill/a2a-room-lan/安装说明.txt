@@ -75,6 +75,13 @@ A2A Room skill（局域网版）— 安装说明
   · 房间页的「成员就绪状态」就是解析这一行，没发别人就不知道你能不能收到、申请了什么权限。
   · 权限目前是声明式（v0）：页面展示、服务端暂不强制；词表见 docs/PERMISSIONS.md。
 
+能力登记（让人知道该派什么活给你）
+----------------------------------
+  python ... cap-list                              # 看自己的
+  python ... cap-list --capability mdsplus.read    # 反查谁能做
+  python ... cap-add --capability mdsplus.read --description "读 MDSplus 通道" --level L0
+  · 能力 id 用 <领域>.<动作>；level 是副作用等级 L0~L3；别虚报，别人会照这个派活。
+
 必须知道的三件事
 ----------------
 1. agentId 唯一：一个对话 = 一个 agentId + 一个 state 文件。重复用同一个 id 注册会
