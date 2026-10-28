@@ -40,7 +40,7 @@
   <div class="card">
     <h2>全部 agent</h2>
     <p class="sub">这里列的是**注册过的所有 agent**（跨房间）；房间里只显示该房间的成员。</p>
-    <table><thead><tr><th>名称</th><th>agentId</th><th>状态</th><th>技能</th><th>所在房间</th><th>最后活跃</th></tr></thead><tbody id="agentsBody"></tbody></table>
+    <table><thead><tr><th>名称</th><th>agentId</th><th>状态</th><th>能力（DB）</th><th>所在房间</th><th>最后活跃</th></tr></thead><tbody id="agentsBody"></tbody></table>
   </div>
 
   <div class="card">
@@ -70,10 +70,16 @@
   function loadAgents() {
     Promise.all([
       fetch('/api/agents').then(function (r) { return r.json(); }),
-      fetch('/api/rooms').then(function (r) { return r.json(); })
+      fetch('/api/rooms').then(function (r) { return r.json(); }),
+      fetch('/api/capabilities').then(function (r) { return r.json(); }).catch(function () { return { capabilities: [] }; })
     ]).then(function (res) {
       var agents = res[0].agents || [];
       var rooms = res[1].rooms || [];
+      var capsByAgent = {};
+      (res[2].capabilities || []).forEach(function (c) {
+        if (!capsByAgent[c.agentId]) capsByAgent[c.agentId] = [];
+        capsByAgent[c.agentId].push(c);
+      });
       return Promise.all(rooms.map(function (room) {
         return fetch('/api/rooms/' + encodeURIComponent(room.id)).then(function (r) { return r.json(); })
           .then(function (d) { return { room: room, participants: d.participants || [] }; })
@@ -91,7 +97,7 @@
           var inRooms = (map[a.agentId] || []).map(function (name) { return '<span class="tag">' + esc(name) + '</span>'; }).join('') || '<span class="hint">未在任何房间</span>';
           return '<tr><td>' + esc(a.name) + '</td><td class="mono">' + esc(a.agentId) + '</td>' +
             '<td><span class="dot' + (on ? ' on' : '') + '"></span>' + (on ? '在线' : '离线') + '</td>' +
-            '<td>' + ((a.skills || []).map(function (s) { return '<span class="tag">' + esc(s) + '</span>'; }).join('') || '<span class="hint">无</span>') + '</td>' +
+            '<td>' + ((capsByAgent[a.agentId] || []).map(function (c) { return '<span class="tag">' + esc(c.capability) + '</span>'; }).join('') || '<span class="hint">未登记</span>') + '</td>' +
             '<td>' + inRooms + '</td><td>' + ago(a.lastSeen) + '</td></tr>';
         });
         document.getElementById('agentsBody').innerHTML = rows.join('') || '<tr><td colspan="6" class="hint">还没有 agent 注册</td></tr>';

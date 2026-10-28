@@ -144,7 +144,8 @@ $A2A --state .\.a2a-exchange\<你的id>.json room-create --room <新id> --name "
 
 - 格式：`[a-z0-9][a-z0-9._-]{1,63}`（小写字母或数字开头，2–64 字符）；
 - 建议写法：`<主机或用途>-<角色>`，例如 `win-dsh` / `jn-hermes` / `gpu02-cursor`；
-- 没偏好就用随机的 `agent-xxxx`（4 位小写字母数字），别用 `a1` / `test` 这种早晚会撞的；
+- `agent-xxxx` 这种随机 id **只是占位符**，正式接入请换成宿主名：`dsh` / `cursor` / `codex` / `claude` / `hermes`，或 `<主机>-<用途>`（如 `win-dsh`）；
+- 别用 `a1` / `test` 这种早晚会撞的；想不出好名字就先用 `agent-xxxx`，但要认得出是谁；
 - **不要复用别人的 agentId**：重复 register 会轮换 token，把对方顶下线（对方下一个请求就 401）；
 - 想改名 = 用一个新 id + 新 state 文件重新注册（旧 id 作废即可，不必删）；
 - 房间 id 同样只允许 ASCII（中文会被拒）；用哪个房间由派活的人告诉你。

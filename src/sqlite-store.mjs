@@ -97,6 +97,33 @@ CREATE TABLE IF NOT EXISTS room_activity (
   created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_room_activity_room ON room_activity(room_id, event_id);
+CREATE TABLE IF NOT EXISTS capabilities (
+  agent_id TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  description TEXT,
+  level TEXT,
+  source TEXT,
+  updated_at TEXT,
+  PRIMARY KEY (agent_id, capability),
+  FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS duties (
+  duty_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  room_id TEXT,
+  required_scopes TEXT,
+  created_by TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS duty_assignments (
+  duty_id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  claimed_at TEXT,
+  FOREIGN KEY (duty_id) REFERENCES duties(duty_id) ON DELETE CASCADE,
+  FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 
@@ -108,6 +135,7 @@ export class SqliteStore {
     this.db = new DatabaseSync(this.dbFile);
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA synchronous = NORMAL;');
+    this.db.exec('PRAGMA foreign_keys = ON;');
     this.#migrateOldSchema();
     this.db.exec(SCHEMA);
     this.#ensureColumns();
@@ -376,7 +404,79 @@ export class SqliteStore {
   getMeta(key) { return this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value; }
   setMeta(key, value) { this.db.prepare('INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value)); }
 
-  /* ── migrations ── */
+  /* capabilities (FK -> agents) */
+  upsertCapability(cap) {
+    const now = new Date().toISOString();
+    this.db.prepare('INSERT INTO capabilities(agent_id, capability, description, level, source, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(agent_id, capability) DO UPDATE SET description = excluded.description, level = excluded.level, source = excluded.source, updated_at = excluded.updated_at')
+      .run(cap.agentId, cap.capability, cap.description ?? null, cap.level ?? null, cap.source ?? null, now);
+    return this.getCapability(cap.agentId, cap.capability);
+  }
+
+  getCapability(agentId, capability) {
+    const row = this.db.prepare('SELECT * FROM capabilities WHERE agent_id = ? AND capability = ?').get(agentId, capability);
+    return row ? this.#capRow(row) : null;
+  }
+
+  listCapabilities(agentId) {
+    const rows = agentId
+      ? this.db.prepare('SELECT * FROM capabilities WHERE agent_id = ? ORDER BY capability').all(agentId)
+      : this.db.prepare('SELECT * FROM capabilities ORDER BY agent_id, capability').all();
+    return rows.map((row) => this.#capRow(row));
+  }
+
+  deleteCapability(agentId, capability) {
+    this.db.prepare('DELETE FROM capabilities WHERE agent_id = ? AND capability = ?').run(agentId, capability);
+  }
+
+  #capRow(row) {
+    return {
+      agentId: row.agent_id, capability: row.capability, description: row.description,
+      level: row.level, source: row.source, updatedAt: row.updated_at,
+    };
+  }
+
+  /* duties (claims FK -> agents) */
+  listDuties() {
+    const rows = this.db.prepare('SELECT d.*, a.agent_id AS claimed_by, a.claimed_at AS claimed_at FROM duties d LEFT JOIN duty_assignments a ON a.duty_id = d.duty_id ORDER BY d.duty_id').all();
+    return rows.map((row) => this.#dutyRow(row));
+  }
+
+  getDuty(dutyId) {
+    const row = this.db.prepare('SELECT d.*, a.agent_id AS claimed_by, a.claimed_at AS claimed_at FROM duties d LEFT JOIN duty_assignments a ON a.duty_id = d.duty_id WHERE d.duty_id = ?').get(dutyId);
+    return row ? this.#dutyRow(row) : null;
+  }
+
+  createDuty(duty) {
+    const now = new Date().toISOString();
+    this.db.prepare('INSERT INTO duties(duty_id, title, description, room_id, required_scopes, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(duty.dutyId, duty.title, duty.description ?? null, duty.roomId ?? null, JSON.stringify(duty.scopes ?? []), duty.createdBy ?? 'human', duty.createdAt ?? now, now);
+    return this.getDuty(duty.dutyId);
+  }
+
+  claimDuty(dutyId, agentId) {
+    const now = new Date().toISOString();
+    this.db.prepare('INSERT INTO duty_assignments(duty_id, agent_id, claimed_at) VALUES (?, ?, ?) ON CONFLICT(duty_id) DO UPDATE SET agent_id = excluded.agent_id, claimed_at = excluded.claimed_at')
+      .run(dutyId, agentId, now);
+    return this.getDuty(dutyId);
+  }
+
+  releaseDuty(dutyId) {
+    this.db.prepare('DELETE FROM duty_assignments WHERE duty_id = ?').run(dutyId);
+    return this.getDuty(dutyId);
+  }
+
+  #dutyRow(row) {
+    let scopes = [];
+    try { scopes = JSON.parse(row.required_scopes ?? '[]'); } catch { scopes = []; }
+    return {
+      dutyId: row.duty_id, title: row.title, description: row.description, roomId: row.room_id,
+      scopes, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
+      claimedBy: row.claimed_by ?? null, claimedAt: row.claimed_at ?? null,
+      status: row.claimed_by ? 'claimed' : 'open',
+    };
+  }
+
+  /* migrations */
   #tableInfo(name) {
     try { return this.db.prepare(`PRAGMA table_info(${name})`).all(); } catch { return []; }
   }

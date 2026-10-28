@@ -181,6 +181,9 @@ H2 侧环境注意：webhook 只允许 `127.0.0.1/localhost`；跨机场景当�
 ```text
 bin/                 CLI 入口
 src/                 Hub / registry / rooms / tasks / SQLite store
+src/duties.mjs       职责登记（SQLite：duties / duty_assignments，外键到 agents）
+src/capabilities.mjs 能力登记（SQLite：capabilities，外键到 agents；注册时按 Agent Card skills 同步）
+src/web/             页面（dashboard / onboarding / agents），由 serveWebPage() 直接发
 sdk/                 Node client
 skill/a2a-room/      agent 用的房间 skill
 plugin/a2a-room-bridge7/  DSH Host 唤醒插件（可选）
