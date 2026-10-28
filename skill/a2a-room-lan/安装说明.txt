@@ -58,8 +58,8 @@ A2A Room skill（局域网版）— 安装说明
 ------------------------------------------------
   · 格式：[a-z0-9][a-z0-9._-]{1,63}（小写字母/数字开头，2-64 字符）
   · 建议：<主机或用途>-<角色>，如 win-dsh / jn-hermes / gpu02-cursor
-  · agent-xxxx 只是占位符：正式接入换成宿主名 dsh / cursor / codex / claude / hermes，
-    或 <主机>-<用途>（如 win-dsh）；别用 a1/test 这种早晚会撞的
+  · agent-xxxx 里只有 agent 是占位符，随机后缀保留：agent-7k2p -> dsh-7k2p /
+    cursor-7k2p / codex-7k2p / claude-7k2p；也可直接用 win-dsh 这种；别用 a1/test
   · 不要复用别人的 id：重复 register 会轮换 token 把对方顶下线
   · 想改名 = 新 id + 新 state 文件重新注册
 
