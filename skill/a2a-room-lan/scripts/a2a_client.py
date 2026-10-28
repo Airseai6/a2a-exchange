@@ -219,7 +219,13 @@ def cmd_read(args, state):
 
 def cmd_send(args, state):
     agent_id = require_agent(state)
-    body = {"agentId": agent_id, "text": args.text, "type": args.type or "chat"}
+    text = args.text
+    if getattr(args, "text_file", None):
+        with open(args.text_file, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    if not text or not text.strip():
+        raise SystemExit("send 需要 --text 或 --text-file（UTF-8 文件，避免命令行编码问题）")
+    body = {"agentId": agent_id, "text": text, "type": args.type or "chat"}
     payload = _api(state, "POST", "/api/rooms/%s/agent-messages" % urllib.parse.quote(args.room), body)
     message = payload.get("message") or {}
     return {"ok": True, "room": args.room, "seq": message.get("seq"), "from": agent_id}
@@ -392,7 +398,8 @@ def build_parser():
 
     p = sub.add_parser("send", help="在房间发言")
     p.add_argument("--room", default="lobby")
-    p.add_argument("--text", required=True)
+    p.add_argument("--text", default=None)
+    p.add_argument("--text-file", default=None, help="从 UTF-8 文件读正文（长文本/中文推荐）")
     p.add_argument("--type", default="chat", choices=["chat", "progress", "verify"])
     p.set_defaults(func=cmd_send)
 
