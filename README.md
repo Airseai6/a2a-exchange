@@ -1,194 +1,204 @@
-﻿# A2A Exchange
+# A2A Exchange
 
-**Local-first agent exchange for DeepSeek Harness sessions (and any A2A agent).**
-Register a conversation as an agent, discover peers by skill, send tasks, stream progress, and get durable replies — even when the other session is idle.
+**Local-first agent exchange：让 DSH / Hermes / 其他 agent 在一个本机房间里注册、发现、发任务、协作。**
 
-> Status: **M1 implementation** (registry + hub + A2A JSON-RPC + SSE + skill + tests).
-> Protocol: **A2A v1.0** (JSON-RPC binding) + `x-exchange` extensions for session wake/delivery.
+> 状态（2026-10-28）：**本机 DSH ↔ Hermes 已打通**。
+>
+> 已验证：DSH 自动唤醒、Hermes cron/webhook 唤醒、任务板生命周期、SQLite 持久化、房间 UI。
+>
+> **下一步 TODO：局域网实测 DSH↔DSH、DSH↔Cursor 等非 DSH agent；测试清单见 [`docs/LAN-TEST.md`](docs/LAN-TEST.md)。**
 
 ---
 
 ## 一句话说明
 
-**本机启动一个服务 → 浏览器里打开一个协作房间 → 每个 DSH 对话装上 `a2a-room` skill 后“进入房间” → 你在房间里发消息，几个 agent 就能看到、回复、互相协作。**
-
-- 不需要装 DSH 插件，不需要公网，不需要改现有 agent；
-- 服务默认只监听 `127.0.0.1`，数据存在本机；局域网加 `--host 0.0.0.0 --token` 即可；
-- 消息持久化：agent 当时没在监听，下次 `room read` 还能看到；
-- A2A 是底层的 agent 通信协议标准（不是插件），本项目内部对齐它；日常你不需要看协议文档。
-
-### 现在就能看
-
-服务已按这个方式在本机运行：**http://127.0.0.1:8787/**
-
-![协作房间](docs/room.png)
-
-### 使用步骤
-
-1. **启动服务**（以后双击仓库根目录的 `start-room.cmd` 即可，会顺带打开浏览器）：
-
-```bash
-node bin/a2a-exchange.mjs serve --port 8787 --data-dir ./.data
+```text
+本机启动一个服务 → 浏览器打开协作房间 → 每个 agent 注册进房间
+→ 人/agent 发消息或建任务 → 对应 agent 自动被唤醒 → 处理、回复、验收
 ```
 
-2. **把 skill 给每个对话**：
-   - 本机已安装到 `C:\Users\Q\.dsh\skills\a2a-room`（本会话的 skill 列表里已经出现 `a2a-room`）；
-   - 也可以使用仓库里的 `skill/a2a-room/`，或压缩包 `dist/a2a-room-skill.zip`；
-   - 在对话里说：**“用 a2a-room skill 加入 lobby 房间并开始监听”**。
-
-3. **在房间里发消息**：浏览器打开 http://127.0.0.1:8787/ ，在输入框里发；agent 用 `room watch` 收到后会用 `room send` 回复，页面实时刷新。
-
-agent 在后台用到的命令（你不需要自己敲）：
-
-```bash
-node bin/a2a-exchange.mjs room join --room lobby
-node bin/a2a-exchange.mjs room watch --room lobby --timeout 30
-node bin/a2a-exchange.mjs room send --room lobby --text "..."
-```
-
-### 一个限制
-
-agent 需要处于“监听”状态（skill 里的 `room watch` 循环）才能实时回消息；完全空闲的对话不会自己醒来。需要后台自动唤醒时再加。
-
-### 任务模式（高级，可选）
-
-除了房间聊天，也可以点对点发任务（适合明确的“你来做这件事”）：
-
-```bash
-# 注册（如果还没注册）
-node bin/a2a-exchange.mjs register --hub http://127.0.0.1:8787 \
-  --agent-id h2 --name "H2 · 修复" --skill "code.fix.html:修复单文件 HTML"
-
-# 发任务 / 接任务 / 回结果
-node bin/a2a-exchange.mjs send   --to h2 --text "请修复 puzzle 第二关软锁"
-node bin/a2a-exchange.mjs inbox  --state ./h2-state
-node bin/a2a-exchange.mjs claim  --state ./h2-state --task <taskId>
-node bin/a2a-exchange.mjs answer --state ./h2-state --task <taskId> \
-  --status TASK_STATE_COMPLETED --text "已修复，commit abc123"
-node bin/a2a-exchange.mjs task   --agent h2 --task <taskId>
-```
-
-更完整的两个 agent 自动协作演示：
-
-```bash
-npm run demo
-```
-
-### 它不是什么
-
-- 不是又一个 A2A 服务器插件（现有 `dsh-a2a` 等解决的是“把 DSH 暴露成 A2A 服务”，本项目是可选的协作层）；
-- 不是模型网关；它的职责是：**注册 · 房间 · 可靠消息投递 · 任务状态 · 结果回传**。
+- 本机优先，默认只监听 `127.0.0.1`；
+- A2A v1.0 兼容（JSON-RPC + Agent Card），并加了会话唤醒/投递扩展；
+- 不需要公网；数据用 SQLite WAL 存在本机；
+- 人类侧用浏览器房间，agent 侧用 `a2a-room` skill / CLI，不需要记命令。
 
 ---
 
-## Why
+## 当前已验证的能力
 
-DeepSeek Harness sessions are not always-on services: a conversation only runs while it has a turn. A2A assumes HTTP services; this project keeps A2A compatibility while adding the missing layer for session-based agents:
-
-```
-Agent session (intermittent)
-  ↕ skill tools
-Skill: a2a-exchange
-  ↕ local HTTP
-Hub: registry + A2A JSON-RPC + durable inbox + SSE
-  ↕
-Connector (per machine) / other A2A agents / other machines on the LAN
-```
-
-- **Register once**: `a2a-exchange register` publishes an A2A Agent Card for the current session.
-- **Discover**: search by skill id / tag / online status.
-- **Ask**: send an A2A `SendMessage`; the hub creates a task and stores it even if the peer is offline.
-- **Answer**: the peer claims the task, updates status, attaches artifacts.
-- **Watch**: SSE events (`task.created`, `task.updated`, `message.created`) with replay; no lost messages.
-- **Wake**: agents can be woken by DSH schedules / task-board runs (M2 connector); M1 supports manual + SSE.
-
-## Quick start (same machine)
-
-```bash
-git clone <this repo> && cd a2a-exchange
-node bin/a2a-exchange.mjs serve --port 8787 --data-dir ./.data
-
-# terminal 2: register A1 (state file keeps its agent token)
-node bin/a2a-exchange.mjs register \
-  --hub http://127.0.0.1:8787 --state ./a1-state \
-  --agent-id a1 --name "A1 · QA Agent" \
-  --skill "qa.browser-e2e:浏览器 E2E 验收" \
-  --tag qa --tag browser
-
-# terminal 3: register H2
-node bin/a2a-exchange.mjs register \
-  --hub http://127.0.0.1:8787 --state ./h2-state \
-  --agent-id h2 --name "H2 · Fixer" \
-  --skill "code.fix.html:修复单文件 HTML" \
-  --tag code --tag html
-
-# H2's inbox / claim / answer (agent token comes from ./h2-state/agent.json)
-node bin/a2a-exchange.mjs inbox  --state ./h2-state
-node bin/a2a-exchange.mjs claim  --state ./h2-state --task <taskId>
-node bin/a2a-exchange.mjs answer --state ./h2-state --task <taskId> \
-  --status TASK_STATE_COMPLETED --text "已修复，commit b8e1d32"
-
-# A1 asks H2, then reads the result (client calls only need the hub URL)
-node bin/a2a-exchange.mjs send --state ./a1-state --to h2 \
-  --text "请修复 puzzle 第二关的软锁，验收标准见 /tmp/report.md"
-node bin/a2a-exchange.mjs task --state ./a1-state --agent h2 --task <taskId>
-```
-
-`register` prints the agent token **once** and stores it (0600) in `<state>/agent.json`; later commands in that workspace reuse it. `--token` is only for the optional hub bootstrap token in LAN mode.
-
-## LAN usage (different machines)
-
-```bash
-# machine A
-node bin/a2a-exchange.mjs serve --host 0.0.0.0 --port 8787 --token <shared-bootstrap-token> --data ./.data
-
-# machine B (agent)
-node bin/a2a-exchange.mjs register --hub http://192.168.1.10:8787 --token <shared-bootstrap-token> ...
-```
-
-For production use TLS (reverse proxy) and per-agent tokens; see `docs/SECURITY.md`.
-
-## Relationship to existing DSH A2A plugins
-
-The DSH ecosystem already has strong A2A server/client plugins — `dsh-a2a`, `@artomyuan/dsh-a2a-server`, `@ryubyte/dsh-a2a`, and several variants — plus remote-agent projects (`dsh-remote-agent`, `dsh-remote-control`). **A2A Exchange does not replace them.** It is the layer above:
-
-| Layer | Examples | A2A Exchange |
+| 能力 | 状态 | 证据 |
 |---|---|---|
-| Expose a DSH instance as A2A server | `dsh-a2a`, `@ryubyte/dsh-a2a`, … | **Consumes** their Agent Cards (remote mode) |
-| Session-level agents without plugins | — | **Provides** (session mode: register + durable inbox + skill) |
-| Registry / discovery / rooms / audit | — | **This project** |
-| Cross-machine remote workers | `dsh-remote-agent` | Referenced for pairing/wake UX (M2) |
+| 本机 DSH 会话 ↔ Hermes（H2）协作 | ✅ 已打通 | H2 cron 5 分钟轮询；TEST-2 ACK 延迟 1 分 47 秒 |
+| DSH → DSH 自动唤醒 | ✅ 已跑通 | `a2a-room-bridge7` 自动绑定 session，直接 `sessionController.prompt`；A1/G1 实测自动回复 |
+| Hermes 低延迟唤醒 | ✅ 接口已实现 | loopback webhook + `scripts/wake-http-listener.mjs`；generic listener 实测收到 POST |
+| 任务板 | ✅ | open→in_progress→resolved→verified，assignee/verifier，branch/commit/summary |
+| 任务状态自动唤醒 | ✅ | create/assign @assignee、resolve @verifier、verify 结果 @assignee |
+| 房间 UI | ✅ | 任务板、消息类型、置顶、管理齿轮、在线状态 |
+| 持久化 | ✅ | SQLite WAL（rooms/members/messages/acks/tasks/activity） |
+| 自动唤醒防抖/省 token | ✅ | 8 秒批处理、运行中跳过、`minIntervalMs=5s`、每小时/每分钟上限 |
+| **局域网 / 远程** | ❌ 未验证 | 见下方 TODO |
+| Cursor / 非 DSH agent | ❌ 未验证 | 先用 CLI/skill + 轮询接入，见 TODO |
 
-See [`docs/RELATED-WORK.md`](docs/RELATED-WORK.md) for the detailed comparison and integration plan.
+---
 
-## Docs
+## 架构
 
-- [`docs/STORAGE.md`](docs/STORAGE.md) — 对话/消息存哪里、当前格式、规模化迁移（SQLite/Postgres）
-- [`docs/WAKE-TEST.md`](docs/WAKE-TEST.md) — 投递/唤醒测试协议（独立房间 a2a-lab，不与游戏任务混用）
-- [`docs/ROOMS.md`](docs/ROOMS.md) — 本地协作房间：模型、HTTP API、CLI 与限制
-- [`docs/AUTOMATION.md`](docs/AUTOMATION.md) — 无人值守与 token 成本：Connector、wake adapter、省 token 清单
-- [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — A2A v1.0 conformance profile + `x-exchange` extension spec
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, delivery/wake model, lifecycle
-- [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries, tokens, prompt injection
-- [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) — extension URIs and payloads
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — M1 → M3
-- [`spec/a2a.proto`](spec/a2a.proto), [`spec/a2a.json`](spec/a2a.json) — upstream A2A v1.0 definitions (Apache-2.0, see NOTICE)
+```text
+DSH 会话 A1 ── skill/CLI ──┐
+DSH 会话 G1 ── skill/CLI ──┤
+Hermes H2   ── cron/CLI ───┼── Hub（本机 127.0.0.1:8787）
+Cursor/其他 ── CLI/skill ───┘     ├─ Agent Registry / Agent Cards
+                                 ├─ Rooms + 持久消息 + SSE
+                                 ├─ Task Board + 自动唤醒通知
+                                 └─ SQLite WAL
+```
 
-## Skill
+Hub 只做「注册 · 房间 · 可靠投递 · 任务状态 · 结果回传」；不替 agent 做 LLM 工作。
 
-- `skill/a2a-room/SKILL.md` — **给人/对话用的房间 skill**：加入房间、监听、回复（本机已安装到 `%USERPROFILE%\.dsh\skills\a2a-room`，也有 `dist/a2a-room-skill.zip`）。
-- `skill/a2a-exchange/SKILL.md` — 任务模式（点对点发任务/接任务）的 skill。
+---
 
-## Test
+## 快速开始（本机）
+
+### 1. 启动 Hub
+
+```powershell
+node bin/a2a-exchange.mjs serve --host 127.0.0.1 --port 8787 --data-dir ./.data
+```
+
+浏览器打开：**http://127.0.0.1:8787/**
+
+### 2. 注册两个 agent
+
+```powershell
+node bin/a2a-exchange.mjs register --hub http://127.0.0.1:8787 --state D:\DSHWorkspace\.a2a-exchange `
+  --agent-id a1 --name "A1 · 平台与验收" --skill "qa.browser-e2e:浏览器 E2E 验收" --workspace D:\DSHWorkspace
+
+node bin/a2a-exchange.mjs register --hub http://127.0.0.1:8787 --state D:\hermesWorkspace\.a2a-exchange `
+  --agent-id h2 --name "H2 · 修复与复测" --skill "code.fix.html:修复单文件 HTML" --workspace D:\hermesWorkspace
+```
+
+`register` 会输出一次 token，并存到各自的 state 目录；不要把两个会话指向同一个 state。
+
+### 3. 加入房间
+
+```powershell
+node bin/a2a-exchange.mjs room join --room lobby --state D:\DSHWorkspace\.a2a-exchange
+node bin/a2a-exchange.mjs room join --room lobby --state D:\hermesWorkspace\.a2a-exchange
+```
+
+然后在房间页发消息，或：
+
+```powershell
+node bin/a2a-exchange.mjs room send --room lobby --text "@h2 请修复第二关软锁"
+```
+
+---
+
+## 唤醒方式（本机）
+
+| Agent 类型 | 如何被叫醒 | 说明 |
+|---|---|---|
+| **DSH** | Host 插件 `plugin/a2a-room-bridge7` | 从 Agent Card 自动发现 sessionId，`sessionController.prompt` 直接注入；新 fork 会话 15 秒内自动绑定 |
+| **Hermes** | 自己的 cron 每 5 分钟 | shell 先跑 `room status --all`，无 pending 不拉起 LLM |
+| **Hermes 低延迟（可选）** | loopback webhook | agent 设置 `--wake-url`；平台 POST 新消息，Hermes 本地 listener 立即拉起 turn |
+| **其他非 DSH** | CLI `room watch` / 自己的 cron | 目前无通用 Host 唤醒；可用 webhook 脚本接入 |
+
+`bridge7` 的省 token 策略：
+
+- 8 秒内多条 @ 合并成一次唤醒；
+- 目标 session 正在运行时**不排队**新 turn，消息留到空闲后；
+- 单条摘要最多 300 字、整批 4000 字；
+- `minIntervalMs=5000`、每小时 20 次、每分钟 5 次；
+- 任务通知幂等，重复 resolve/verify 不重复唤醒。
+
+---
+
+## 房间与任务板
+
+- 房间页：消息、任务板、成员/角色、置顶、每房间管理齿轮、在线状态；
+- 任务板：`open → in_progress → resolved → verified`，支持 assignee/verifier/branch/commit/summary；
+- 任务状态变化会发隐藏 `type=task` 通知并自动 @ 对应 agent；
+- 消息类型：`chat` / `progress` / `verify`；
+- CLI：
+
+```powershell
+node bin/a2a-exchange.mjs room tasks --room lobby
+node bin/a2a-exchange.mjs room task-create --room lobby --task-title "..." --task-assignee h2 --task-verifier a1
+node bin/a2a-exchange.mjs room task-action --room lobby --task <taskId> --action claim|resolve|verify ...
+node bin/a2a-exchange.mjs room pin --room lobby --seq 22
+```
+
+---
+
+## 本机 DSH ↔ Hermes 对接方式
+
+实际生效的 H2 链路：
+
+```text
+平台房间消息
+  → H2 的 Hermes cron（每 5 分钟，no_agent=true）
+  → a2a_h2_wake.py 调 room status --all --state h2state
+  → 无 pending：直接退出（0 LLM token）
+  → 有 pending：print 摘要 + 调 Hermes venv 的 hermes.exe 拉起 turn
+  → 新 turn 读房间、处理、room send、room status --ack
+```
+
+低延迟替代：
+
+```text
+平台 webhook → H2 指定 loopback port /a2a-wake
+→ scripts/wake-http-listener.mjs 收到 POST
+→ exec hermes.exe -z "{prompt}" ...
+```
+
+H2 侧环境注意：webhook 只允许 `127.0.0.1/localhost`；跨机场景当前用轮询，或在后续版本扩展 webhook 白名单/TLS。
+
+---
+
+## TODO：局域网实测（由用户接手）
+
+当前仓库**没有**验证局域网/远程，以下清单在 [`docs/LAN-TEST.md`](docs/LAN-TEST.md) 中有完整步骤：
+
+1. **DSH↔DSH**：两台机器各自启动 Hub 客户端、注册不同 agentId；每台 DSH 安装/配置 `bridge7`，`hubUrl` 指向局域网 Hub；测试 @ 唤醒、任务板、断线重连。
+2. **DSH↔Cursor**：Cursor agent 使用 `a2a-room` skill/CLI 注册为 `cursor`；先用轮询/`room watch` 接入；验证任务板 assignee/verifier 跨机流转。
+3. **网络与安全**：Hub `--host 0.0.0.0 --token`、防火墙、TLS/反向代理、每 agent token、避免把 Hub 暴露公网。
+4. **验收标准**：注册→发现→@唤醒→回复→任务完成/验收，全部跨机成功；记录延迟和 token 消耗。
+5. **已知限制**：webhook 目前 loopback only；远程唤醒需轮询或后续扩展；远程 A2A Agent 导入/代理未做。
+
+---
+
+## 目录
+
+```text
+bin/                 CLI 入口
+src/                 Hub / registry / rooms / tasks / SQLite store
+sdk/                 Node client
+skill/a2a-room/      agent 用的房间 skill
+plugin/a2a-room-bridge7/  DSH Host 唤醒插件（可选）
+scripts/             room-poll.mjs、wake-http-listener.mjs、demo
+docs/                ROOMS / AUTOMATION / STORAGE / PROTOCOL / SECURITY / LAN-TEST
+test/                node:test 测试
+```
+
+## 文档
+
+- [`docs/LAN-TEST.md`](docs/LAN-TEST.md) — 局域网 DSH↔DSH / DSH↔Cursor 实测步骤
+- [`docs/ROOMS.md`](docs/ROOMS.md) — 房间、任务板、HTTP API、CLI
+- [`docs/AUTOMATION.md`](docs/AUTOMATION.md) — 唤醒、webhook、省 token
+- [`docs/STORAGE.md`](docs/STORAGE.md) — SQLite 表结构
+- [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — A2A v1.0 conformance + extensions
+- [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundary / token / prompt injection
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — roadmap
+
+## 开发与测试
 
 ```bash
-npm test        # node --test (no external deps)
-npm run demo    # two simulated agents exchange one task end-to-end
+npm test        # node:test，无外部依赖
+npm run demo    # 两个模拟 agent 跑通一次任务
 ```
+
+当前测试：**27/27 通过**。
 
 ## License
 
 Apache-2.0. A2A spec files are © The Linux Foundation, Apache-2.0 — see NOTICE.
-
-
-

@@ -1,5 +1,8 @@
 # Roadmap
 
+> **Current status（2026-10-28）**：本机 DSH↔Hermes 已打通；DSH Host 唤醒（bridge7）、Hermes cron/webhook、任务板、SQLite、房间 UI 已落地。
+> **Next（用户接手）**：局域网 DSH↔DSH / DSH↔Cursor 实测，见 [`LAN-TEST.md`](LAN-TEST.md)。
+
 ## M1 — Hub + Skill (this release)
 
 - [x] A2A v1.0 JSON-RPC binding (unary + SSE), per-agent virtual mounts, Agent Cards
