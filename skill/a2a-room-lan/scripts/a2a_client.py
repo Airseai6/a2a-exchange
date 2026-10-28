@@ -194,6 +194,9 @@ def cmd_join(args, state):
 
 def cmd_read(args, state):
     query = "?since=%d&limit=%d" % (args.since or 0, args.limit or 200)
+    if state.get("agentId"):
+        # 带上 agentId + token，服务端会把这次读当成“进程活着”，刷新在线状态
+        query += "&agentId=" + urllib.parse.quote(state["agentId"])
     payload = _api(state, "GET", "/api/rooms/%s%s" % (urllib.parse.quote(args.room), query))
     messages = payload.get("messages") or []
     agent_id = state.get("agentId") or ""

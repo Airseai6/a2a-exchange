@@ -72,7 +72,7 @@ scope 与 API 的对应（**将来强制的位置**）：
 | 阶段 | 内容 | 行为变化 | 状态 |
 |---|---|---|---|
 | **P0（本次）** | 自述里声明 `权限=…` 与 `副作用=…`；引导页解析并展示；词表定下来 | **无**（纯声明） | 已在做 |
-| P1（进行中） | 已做：**禁止自我验收**（agent 身份下 assignee 不能 verify 自己的卡）+ **操作人归因**（带 agent token 的建卡/动作记为 agent，不再是 human）。未做：`room:write` / `task:*` 的全面强制 | 有（小范围） | 进行中 |
+| P1（dry-run 已上） | 已做：**禁止自我验收** + **操作人归因** + **scope 检查 dry-run**（越权只记 `perm-dryrun` activity，不拦）；切真拦：`A2A_PERMISSION_MODE=enforce` | 无（默认 dryrun） | 进行中 |
 | P2 | token 绑定 scope（注册时申请、人批准）；人类账号与 agent 账号分离；hub token 与 agent token 分开 | 有 | 待做 |
 
 P1 之前，**派活仍然只靠人工确认**——这是当前唯一的“门禁”。

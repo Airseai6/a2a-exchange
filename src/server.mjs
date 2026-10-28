@@ -143,6 +143,15 @@ export function createExchangeServer(options = {}) {
   rooms.setMessageHook((message) => dispatchRoomWebhooks(store, message));
   rooms.ensureRoom('lobby', '协作大厅', '本机 agent 的公共协作房间');
   rooms.ensureRoom('platform-feedback', '平台问题反馈', '把平台的问题和建议发到这里，供人和 agent 一起改进');
+  const PERMISSION_MODE = process.env.A2A_PERMISSION_MODE ?? 'dryrun'; // off | dryrun | enforce
+  const ROLE_SCOPES = {
+    observer: ['room:read'],
+    member: ['room:read', 'room:write'],
+    operator: ['room:read', 'room:write', 'task:claim', 'task:resolve'],
+    verifier: ['room:read', 'room:write', 'task:claim', 'task:resolve', 'task:verify'],
+    admin: ['room:read', 'room:write', 'task:create', 'task:claim', 'task:resolve', 'task:verify', 'room:admin', 'agent:admin'],
+  };
+
   const serverToken = options.token || null;
   const log = options.logger ?? (() => {});
 
@@ -157,6 +166,48 @@ export function createExchangeServer(options = {}) {
       return registry.verifyAgentToken(agentId, token);
     },
   };
+
+  /** 只读动作也刷新 lastSeen：读/盯房间说明进程是活的。 */
+  function touchAgent(agentId) {
+    try {
+      registry.heartbeat({}, agentId);
+    } catch {
+      // 未注册/已删除的 agent 忽略
+    }
+  }
+
+  /**
+   * 作用域检查（当前默认 dryrun）：算“本应拒绝”的越权，记 activity 但不拦。
+   * A2A_PERMISSION_MODE=off 关闭；=enforce 时真返回 403。
+   */
+  function scopeCheck(roomId, agentId, scope, detail = {}) {
+    if (PERMISSION_MODE === 'off' || !agentId || agentId === 'human') return true;
+    let role = 'member';
+    try {
+      const data = rooms.get(roomId, { limit: 1 });
+      const participant = (data.participants || []).find((p) => p.agentId === agentId);
+      role = participant?.role ?? 'member';
+    } catch {
+      // 房间不存在等情况：按默认成员判断
+    }
+    const allowed = (ROLE_SCOPES[role] ?? ROLE_SCOPES.member).includes(scope);
+    if (allowed) return true;
+    try {
+      store.appendRoomActivity?.({
+        roomId,
+        agentId,
+        type: 'perm-dryrun',
+        seq: 0,
+        detail: scope + ' would be denied (role=' + role + ')' + (detail.taskId ? ' task=' + detail.taskId : ''),
+      });
+    } catch {
+      // 记录失败不影响主流程
+    }
+    if (PERMISSION_MODE === 'enforce') {
+      throw new HttpError(403, 'Forbidden: ' + scope + ' (role=' + role + ')');
+    }
+    return true;
+  }
 
   /** 带有效 agent token 的请求记为该 agent；否则视为人类操作。 */
   function resolveActor(req, body) {
@@ -461,6 +512,7 @@ export function createExchangeServer(options = {}) {
         const roomId = decodeURIComponent(roomPendingMatch[1]);
         const agentId = String(url.searchParams.get('agentId') ?? url.searchParams.get('agent') ?? '');
         if (!agentId) throw new HttpError(400, 'agentId is required');
+        if (checks.agent(req, agentId)) touchAgent(agentId);
         return sendJson(res, 200, rooms.pending(roomId, agentId));
       }
       const roomAckMatch = /^\/api\/rooms\/([^/]+)\/ack$/.exec(path);
@@ -470,6 +522,7 @@ export function createExchangeServer(options = {}) {
         const body = await readJsonBody(req);
         const agentId = String(pick(body, 'agentId', 'agent_id') ?? '');
         if (!agentId) throw new HttpError(400, 'agentId is required');
+        if (checks.agent(req, agentId)) touchAgent(agentId);
         return sendJson(res, 200, rooms.ack(roomId, agentId, pick(body, 'seq', 'lastSeq', 'last_seq')));
       }
       const roomTasksMatch = /^\/api\/rooms\/([^/]+)\/tasks$/.exec(path);
@@ -480,19 +533,26 @@ export function createExchangeServer(options = {}) {
       if (roomTasksMatch && req.method === 'POST') {
         if (!humanAllowed(req)) return unauthenticated(res);
         const body = await readJsonBody(req);
-        return sendJson(res, 201, { task: rooms.createTask(decodeURIComponent(roomTasksMatch[1]), body, resolveActor(req, body)) });
+        const actor = resolveActor(req, body);
+        scopeCheck(decodeURIComponent(roomTasksMatch[1]), actor, 'task:create');
+        return sendJson(res, 201, { task: rooms.createTask(decodeURIComponent(roomTasksMatch[1]), body, actor) });
       }
       const roomTaskActionMatch = /^\/api\/rooms\/([^/]+)\/tasks\/([^/]+)\/([^/]+)$/.exec(path);
       if (roomTaskActionMatch && req.method === 'POST') {
         if (!humanAllowed(req)) return unauthenticated(res);
         const body = await readJsonBody(req);
+        const actActor = resolveActor(req, body);
+        const actRoom = decodeURIComponent(roomTaskActionMatch[1]);
+        const actName = decodeURIComponent(roomTaskActionMatch[3]);
+        const actScope = actName === 'claim' ? 'task:claim' : (actName === 'verify' ? 'task:verify' : 'task:resolve');
+        scopeCheck(actRoom, actActor, actScope, { taskId: decodeURIComponent(roomTaskActionMatch[2]) });
         return sendJson(res, 200, {
           task: rooms.taskAction(
             decodeURIComponent(roomTaskActionMatch[1]),
             decodeURIComponent(roomTaskActionMatch[2]),
             decodeURIComponent(roomTaskActionMatch[3]),
             body,
-            resolveActor(req, body),
+            actActor,
           ),
         });
       }
@@ -506,6 +566,8 @@ export function createExchangeServer(options = {}) {
       if (roomGetMatch && req.method === 'GET') {
         if (!humanAllowed(req)) return unauthenticated(res);
         const roomId = decodeURIComponent(roomGetMatch[1]);
+        const readerId = String(url.searchParams.get('agentId') ?? '');
+        if (readerId && checks.agent(req, readerId)) touchAgent(readerId);
         return sendJson(res, 200, rooms.get(roomId, {
           since: Number(url.searchParams.get('since') ?? 0),
           limit: Number(url.searchParams.get('limit') ?? 200),
@@ -575,6 +637,7 @@ export function createExchangeServer(options = {}) {
         const body = await readJsonBody(req);
         const agentId = String(pick(body, 'agentId', 'agent_id') ?? '');
         if (!agentId || !checks.agent(req, agentId)) return unauthenticated(res);
+        scopeCheck(roomId, agentId, 'room:write');
         return sendJson(res, 201, { message: rooms.postAgent(roomId, agentId, body) });
       }
       if (path === '/a2a' && req.method === 'POST') {

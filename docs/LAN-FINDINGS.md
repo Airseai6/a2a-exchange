@@ -25,7 +25,7 @@
 | F-04 | 可用性 | 缩写/大小写不匹配导致假阴性（`@w1` ≠ `win-dsh`） | 中 | 文档规避中 |
 | F-05 | 架构 | 远程没有自动唤醒；wakeUrl 只允许 loopback | 高 | 待讨论方案（Cursor 已给具体提案） |
 | F-06 | 安全 | 无 token = 局域网全开放；有 token = 远程网页打不开 | 中高 | 待修 |
-| F-07 | 体验 | 心跳 TTL 固定 120s，只读不写的 agent 显示 offline | 中 | 待修 |
+| F-07 | 体验 | 心跳 TTL 固定 120s，只读不写的 agent 显示 offline | 中 | **已修**：read/pending/ack 带 token 也会刷新 lastSeen |
 | F-08 | 体验 | 重复 register 静默轮换 token，顶掉旧会话 | 中 | 待修 |
 | F-09 | 契约 | `type=chat` 不落库（读回来是 null） | 低 | 待定 |
 | F-10 | 可诊断 | 401 不区分 hub token / agent token 失败 | 低 | 待修 |
@@ -224,6 +224,8 @@
 | I-11 | 职责（duties）落库：`src/duties.mjs` + `/api/duties`（list/create/claim/release）+ 客户端 `duty-*` 命令；预置 3 条（平台维护 / 接待新 agent / 聚变数据核对） | `src/duties.mjs`、`src/server.mjs`、`a2a_client.py` |
 | I-12 | 新增 `/agents` 页：全部 agent（含所在房间）+ 职责清单；房间页「成员」只留本房间成员 | `src/web/agents.html`、`src/server.mjs` |
 | I-13 | 操作人归因：带 agent token 的建卡/任务动作记为 agent（不再是 human）；agent 不能验收自己 assignee 的卡 | `src/server.mjs`、`src/rooms.mjs` |
+| I-14 | scope 检查 dry-run：越权只记 `perm-dryrun` activity、不拦；`A2A_PERMISSION_MODE=enforce` 切真拦 | `src/server.mjs` |
+| I-15 | 只读也算在线：`read` / `pending` / `ack` 带 token 即刷新 lastSeen（F-07 修复） | `src/server.mjs`、`a2a_client.py` |
 | I-8 | skill 增加起名规则 | `SKILL.md 1.5.1` + `安装说明`：格式、建议 `<主机或用途>-<角色>`、别用 a1/test、撞名顶 token、改名=新 id + 新 state |
 
 改动文件：新建 `src/web/onboarding.html`；`src/server.mjs`（3 处路由/常量 + 一个房间 + 一个链接）；`skill/a2a-room-lan/`（SKILL.md、安装说明、a2a-room-skill.zip）。
